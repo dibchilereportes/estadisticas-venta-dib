@@ -1,0 +1,9 @@
+# Datos: NUNCA subir al repositorio. El sitio es publico.
+*.parquet
+*.xlsx
+*.xls
+*.csv
+*.db
+datos/
+out*/
+__pycache__/
