@@ -7,3 +7,5 @@
 datos/
 out*/
 __pycache__/
+.token
+token.txt
