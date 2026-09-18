@@ -1,0 +1,69 @@
+name: Actualizar dashboard ventas DIB
+
+on:
+  schedule:
+    - cron: '0 13 * * *'   # 9am Chile (hora estandar, UTC-4); ~10am en horario de verano
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo del dashboard
+        uses: actions/checkout@v4
+
+      - name: Checkout repo de datos (privado)
+        uses: actions/checkout@v4
+        with:
+          repository: dibchilereportes/estadisticas-venta-dib-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: datos-repo
+
+      - name: Preparar carpeta datos
+        run: |
+          mkdir -p datos
+          cp datos-repo/datos/ventas_bdd.parquet datos/ventas_bdd.parquet
+          cp datos-repo/datos/cubo_mes.parquet datos/cubo_mes.parquet
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install pandas pyarrow numpy cryptography
+
+      - name: Extraer datos de Odoo
+        env:
+          ODOO_URL: ${{ secrets.ODOO_URL }}
+          ODOO_DB: ${{ secrets.ODOO_DB }}
+          ODOO_USER: ${{ secrets.ODOO_USER }}
+          ODOO_KEY: ${{ secrets.ODOO_KEY }}
+        run: python extraer_api_odoo.py
+
+      - name: Reconstruir dashboard
+        env:
+          DASH_CLAVE: ${{ secrets.DASH_CLAVE }}
+        run: python build_dash.py datos/cubo_mes.parquet dash_template.html index.html "$DASH_CLAVE"
+
+      - name: Publicar dashboard (repo publico)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet || git commit -m "Actualiza dashboard $(date +%d-%m-%Y)"
+          git push
+
+      - name: Guardar datos actualizados (repo privado)
+        run: |
+          cp datos/ventas_bdd.parquet datos-repo/datos/ventas_bdd.parquet
+          cp datos/cubo_mes.parquet datos-repo/datos/cubo_mes.parquet
+          cd datos-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add datos
+          git diff --cached --quiet || git commit -m "Actualiza datos $(date +%d-%m-%Y)"
+          git push
