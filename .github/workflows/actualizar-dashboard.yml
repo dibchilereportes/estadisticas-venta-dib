@@ -47,7 +47,7 @@ jobs:
       - name: Reconstruir dashboard
         env:
           DASH_CLAVE: ${{ secrets.DASH_CLAVE }}
-        run: python build_dash.py datos/cubo_mes.parquet dash_template.html index.html "$DASH_CLAVE"
+        run: python build_dash.py datos/ventas_bdd.parquet dash_template.html index.html "$DASH_CLAVE"
 
       - name: Publicar dashboard (repo publico)
         run: |
