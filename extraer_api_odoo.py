@@ -226,7 +226,7 @@ def estandarizar(df):
         df['x_cuenta_analytica'].astype(str).str.contains('DEXP', na=False) |
         df['x_branch'].astype(str).str.contains('DECOEXPRESS', case=False, na=False) |
         canal_up.str.contains('DECOEXPRESS', na=False),
-        'DECOEXPRESS', 'DIB')
+        'DECOEXPRESS', 'EDUARDO DIB')
 
     # columnas legado que ya no se pueblan (se mantienen para compatibilidad de esquema)
     for c in ['CodFami', 'CodCate', 'CodSubFami', 'Sucursal',
