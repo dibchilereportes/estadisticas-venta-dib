@@ -189,6 +189,28 @@ def estandarizar(df):
     out['local'] = np.where(es_pdv & df['x_branch'].astype(bool), df['x_branch'],
                     np.where(df['x_cuenta_analytica'].astype(bool), df['x_cuenta_analytica'],
                              df['x_canal']))
+    # x_branch trae el nombre corto de la sucursal; el historico usa el nombre largo con
+    # prefijo DIB/BAZHARS (ej. 'Outlet El Salto' vs 'DIB OUTLET EL SALTO'). Se remapea al
+    # nombre historico para que el mismo local fisico no aparezca duplicado en el filtro.
+    # Confirmado por el usuario (25-09-2026, caso Outlet El Salto) que aplica a todos los
+    # locales DIB. Si aparece un local nuevo de verdad (no un rename), agregarlo aca solo
+    # si corresponde -- no forzar un match dudoso.
+    LOCAL_MAP = {
+        'Outlet El Salto':        'DIB OUTLET EL SALTO',
+        'Outlet Park':            'DIB VIÑA OUTLET PARK',
+        'Outlet Alerce':          'DIB PUERTO MONTT ALERCE',
+        'Easton Center':          'DIB QUILICURA EASTON CENTER',
+        'Vivo La Florida':        'DIB LA FLORIDA',
+        'La Fabrica':             'DIB SAN JOAQUIN LA FABRICA',
+        'Vivo Temuco':            'DIB TEMUCO VIVO',
+        'Vivo Outlet Maipu':      'DIB MAIPU VIVO',
+        'Puerto Montt Costanera': 'DIB PUERTO MONTT COSTANERA',
+        'Easton Temuco':          'DIB TEMUCO EASTON',
+        'Dib Rancagua':           'DIB RANCAGUA',
+        'Bazhars Vitacura':       'BAZHARS VITACURA',
+        'B2C M PLACES':           'B2C M PLACE',
+    }
+    out['local'] = out['local'].replace(LOCAL_MAP)
 
     # Canal: Punto de Venta se resuelve por marca de la sucursal (Bazhars vs DIB); el resto
     # sale del mapeo confirmado en PASO3_mapeo_canal_api.xlsx
