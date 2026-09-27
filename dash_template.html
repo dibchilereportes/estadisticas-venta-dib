@@ -473,7 +473,7 @@ function truncar(txt,maxPx,px){
 
 // dimensión, etiqueta, ¿orden natural?, ¿abierto al inicio?, ¿en el selector de ranking?
 const FILTROS=[
-  ['Empresa','Empresa',0,1,1],
+  ['Empresa','Empresa',0,1,1,1],
   ['Año','Año',1,1,0],['Mes','Mes',1,0,0],
   ['Canal_N1','Canal',0,1,1],['Canal_N2','Sub-canal',0,1,1],['Canal_N3','Detalle canal',0,0,1],
   ['DesgloseEntrega','Destino de entrega',0,0,1],
@@ -602,7 +602,7 @@ function buildSidebar(){
     for(let i=0;i<N;i++) t[c[i]]+=V[i];
     totales[k]=t;
   });
-  FILTROS.forEach(([k,lab,natural,abierto])=>{
+  FILTROS.forEach(([k,lab,natural,abierto,rank,unico])=>{
     sel[k]=new Set();
     const g=document.createElement('div');
     g.className='fgroup'+(abierto?' open':'');
@@ -621,9 +621,13 @@ function buildSidebar(){
     orden.forEach(i=>{
       const l=document.createElement('label'); l.className='opt';
       const nm=natural&&k==='Mes'? (MESES[+D.dims[k][i]-1]||D.dims[k][i]) : D.dims[k][i];
-      l.innerHTML=`<input type="checkbox"><span class="nm" title="${nm}">${nm}</span><span class="vl"></span>`;
+      l.innerHTML=`<input type="${unico?'radio':'checkbox'}"${unico?` name="flt-${k}"`:''}><span class="nm" title="${nm}">${nm}</span><span class="vl"></span>`;
       const cb=l.querySelector('input');
-      cb.onchange=()=>{ cb.checked? sel[k].add(i) : sel[k].delete(i); render(); };
+      cb.onchange=()=>{
+        if(unico){ sel[k].clear(); if(cb.checked) sel[k].add(i); }
+        else{ cb.checked? sel[k].add(i) : sel[k].delete(i); }
+        render();
+      };
       body.appendChild(l);
       opts.push({el:l,cb,vl:l.querySelector('.vl'),code:i,txt:nm.toLowerCase()});
     });
