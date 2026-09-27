@@ -195,6 +195,9 @@ def estandarizar(df):
     # Confirmado por el usuario (25-09-2026, caso Outlet El Salto) que aplica a todos los
     # locales DIB. Si aparece un local nuevo de verdad (no un rename), agregarlo aca solo
     # si corresponde -- no forzar un match dudoso.
+    # Confirmado por el usuario (27-09-2026): Parque Arauco/El Trebol/La Dehesa/
+    # La Serena/Temuco son locales Bazhars de Decostore (mismo caso de rename);
+    # Local 207/315 son los locales de telas/alfombras de Viña del Mar.
     LOCAL_MAP = {
         'Outlet El Salto':        'DIB OUTLET EL SALTO',
         'Outlet Park':            'DIB VIÑA OUTLET PARK',
@@ -209,13 +212,26 @@ def estandarizar(df):
         'Dib Rancagua':           'DIB RANCAGUA',
         'Bazhars Vitacura':       'BAZHARS VITACURA',
         'B2C M PLACES':           'B2C M PLACE',
+        'La Dehesa':              'BAZHARS LA DEHESA',
+        'La Serena':              'BAZHARS LA SERENA',
+        'Temuco':                 'BAZHARS TEMUCO',
+        'El Trebol':              'BAZHARS TREBOL',
+        'Parque Arauco':          'BAZHARS PARQUE ARAUCO',
+        'Montemar':               'BAZHARS MONTEMAR',
+        'Local 207':              'DIB VIÑA LOCAL TELAS',
+        'Local 315':              'DIB VIÑA LOCAL ALFOMBRAS',
     }
     out['local'] = out['local'].replace(LOCAL_MAP)
+    # es_bazhars se calcula sobre el local YA remapeado (out['local']), no sobre
+    # x_branch crudo: x_branch de las sucursales Bazhars ya no trae el prefijo
+    # 'BAZHARS' en la API (viene como 'Parque Arauco', 'Temuco', etc.), asi que
+    # el startswith('BAZHARS') sobre x_branch fallaba para esos locales -- se
+    # detecta despues del remapeo, cuando ya tienen el nombre historico completo.
+    es_bazhars = out['local'].astype(str).str.upper().str.startswith('BAZHARS')
 
     # Canal: Punto de Venta se resuelve por marca de la sucursal (Bazhars vs DIB); el resto
     # sale del mapeo confirmado en PASO3_mapeo_canal_api.xlsx
     canal_up = df['x_canal'].astype(str).str.upper().str.strip().replace('NAN', np.nan)
-    es_bazhars = df['x_branch'].astype(str).str.upper().str.startswith('BAZHARS', na=False)
 
     n1 = pd.Series(np.nan, index=df.index, dtype=object)
     n2 = pd.Series(np.nan, index=df.index, dtype=object)
@@ -244,11 +260,15 @@ def estandarizar(df):
     out['Canal_N2'] = n2
     out['Canal_N3'] = n3
     out['DesgloseEntrega'] = 'No aplica (API)'
-    out['Empresa'] = np.where(
+    es_decoexpress = (
         df['x_cuenta_analytica'].astype(str).str.contains('DEXP', na=False) |
         df['x_branch'].astype(str).str.contains('DECOEXPRESS', case=False, na=False) |
-        canal_up.str.contains('DECOEXPRESS', na=False),
-        'DECOEXPRESS', 'EDUARDO DIB')
+        canal_up.str.contains('DECOEXPRESS', na=False))
+    # Bazhars es la marca retail de Decostore -- antes de esto, ninguna fila de la API
+    # quedaba clasificada como DECOSTORE (bug encontrado 27-09-2026: es_bazhars solo
+    # miraba x_branch crudo, que ya no trae el prefijo 'BAZHARS').
+    out['Empresa'] = np.select([es_bazhars, es_decoexpress], ['DECOSTORE', 'DECOEXPRESS'],
+                               default='EDUARDO DIB')
 
     # columnas legado que ya no se pueblan (se mantienen para compatibilidad de esquema)
     for c in ['CodFami', 'CodCate', 'CodSubFami', 'Sucursal',
