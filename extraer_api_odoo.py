@@ -302,6 +302,14 @@ def estandarizar(df):
     out['Empresa'] = np.select([es_decostore, es_decoexpress], ['DECOSTORE', 'DECOEXPRESS'],
                                default='EDUARDO DIB')
 
+    # local solo tiene sentido para venta de tienda fisica (Locales DIB/Bazhars) -- para
+    # el resto (Web/Marketplace/Venta x Mayor/Interempresas) el valor traia el nombre de
+    # la cuenta analitica generica (ej. 'DIB WEB', 'BAZHARS WEB'), no un local real, y
+    # confundia el filtro Local del dashboard. Se vacia fuera de esos dos canales.
+    # Confirmado por el usuario (28-09-2026).
+    out['local'] = np.where(out['Canal_N2'].isin(['Locales DIB', 'Locales Bazhars']),
+                             out['local'], np.nan)
+
     # columnas legado que ya no se pueblan (se mantienen para compatibilidad de esquema)
     for c in ['CodFami', 'CodCate', 'CodSubFami', 'Sucursal',
               'CodFami_std', 'CodFami_imputado', 'CodCate_std', 'Cat_std', 'CodSubFami_std']:
