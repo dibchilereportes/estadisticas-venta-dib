@@ -165,8 +165,12 @@ def estandarizar(df):
     out['Cantidad'] = df['x_cantidad'].astype('float32')
     out['Precio'] = (df['x_precio'] / UNIDAD_FACTOR).astype('float32')
     out['Venta'] = (df['x_total_venta'] / UNIDAD_FACTOR).astype('float32')
-    out['Costo'] = (df['x_costo'] / UNIDAD_FACTOR).astype('float32')
     out['Contribucion'] = (df['x_margen_contribucion'] / UNIDAD_FACTOR).astype('float32')
+    # x_costo viene con signo/magnitud inconsistente desde esta vista de Odoo (no calza
+    # con x_total_venta - x_margen_contribucion, que si es confiable). Se deriva Costo
+    # de Venta - Contribucion para que el margen (Venta-Costo)/Venta de un resultado
+    # correcto, igual que en el historico. Confirmado por el usuario (28-09-2026).
+    out['Costo'] = (out['Venta'] - out['Contribucion']).astype('float32')
     out['Margen'] = pd.to_numeric(df['x_margen'], errors='coerce').astype('float32')
 
     out['LINEA_STD'] = df['x_linea'].where(df['x_linea'].astype(bool), 'SIN LINEA')
