@@ -63,26 +63,31 @@ CANAL_MAP = {
     'TRADICIONAL':                ('B2B', 'Venta x Mayor', 'Mayorista', True),
     'MODERNO':                    ('B2B', 'Venta x Mayor', 'Retail', True),
     'INTEREMPRESA':               ('INTEREMPRESAS', '', '', False),
-    'ECCOMERCE MARCA PROPIA':     ('B2C', 'Web', '', True),
-    'WEB BAZHARS':                ('B2C', 'Web', '', True),
-    'MARKETPLACE':                ('B2C', 'Marketplace', '', True),
-    'ECCOMERCE VENTA VERDE':      ('B2C', 'Web', '', True),
-    'MARKETPLACE FALABELLA':      ('B2C', 'Marketplace', '', True),
+    'ECCOMERCE MARCA PROPIA':     ('B2C', 'Web', 'Web DIB', True),
+    'WEB BAZHARS':                ('B2C', 'Web', 'Web Bazhars', True),
+    'MARKETPLACE':                ('B2C', 'Marketplace', 'Marketplace', True),
+    'ECCOMERCE VENTA VERDE':      ('B2C', 'Web', 'Venta Verde', True),
+    'MARKETPLACE FALABELLA':      ('B2C', 'Marketplace', 'Falabella', True),
     'RETAIL CENTRALIZADA':        ('B2B', 'Venta x Mayor', 'Retail', True),
-    'WEB DECOEXPRESS':            ('B2C', 'Web', '', True),
-    'MARKETPLACE KITCHENCENTER':  ('B2C', 'Marketplace', '', True),
-    'MARKETPLACE WALLMART':       ('B2C', 'Marketplace', '', True),
-    'MARKETPLACE RIPLEY':         ('B2C', 'Marketplace', '', True),
-    'MARKETPLACE WALMART':        ('B2C', 'Marketplace', '', True),
+    'WEB DECOEXPRESS':            ('B2C', 'Web', 'Web Decoexpress', True),
+    'MARKETPLACE KITCHENCENTER':  ('B2C', 'Marketplace', 'Kitchencenter', True),
+    'MARKETPLACE WALLMART':       ('B2C', 'Marketplace', 'Walmart', True),
+    'MARKETPLACE RIPLEY':         ('B2C', 'Marketplace', 'Ripley', True),
+    'MARKETPLACE WALMART':        ('B2C', 'Marketplace', 'Walmart', True),
     'HORECA':                     ('B2B', 'Venta x Mayor', 'Mayorista', True),
-    'MARKETPLACE PARIS':          ('B2C', 'Marketplace', '', True),
+    'MARKETPLACE PARIS':          ('B2C', 'Marketplace', 'Paris', True),
     'EMPLEADOS':                  ('B2C', 'Empleados', '', True),
     'EMPELADOS':                  ('B2C', 'Empleados', '', True),
     'VEV SODIMAC':                ('B2B', 'Venta x Mayor', 'Retail', True),
     'OFICINA':                    ('EXCLUIR', '', '', False),
-    'MERCADO LIBRE':              ('B2C', 'Marketplace', '', True),
-    'MARKETPLACE HITES':          ('B2C', 'Marketplace', '', True),
+    'MERCADO LIBRE':              ('B2C', 'Marketplace', 'Mercado Libre', True),
+    'MARKETPLACE HITES':          ('B2C', 'Marketplace', 'Hites', True),
     # 'PUNTO DE VENTA' se resuelve aparte, cruzando con x_branch (DIB vs Bazhars)
+    # NOTA (28-09-2026): Canal_N3 ahora lleva la plataforma (Falabella/Ripley/Walmart/...)
+    # tomada directo de x_canal. Antes esta identificacion dependia de que RazonSocial
+    # (x_customer) trajera el nombre de la plataforma como cliente -- eso dejo de pasar
+    # en la API: desde agosto 2026 x_customer trae el consumidor final real (a menudo
+    # CLIENTE BOLETA), no la plataforma. x_canal es la unica fuente confiable de eso.
 }
 
 
