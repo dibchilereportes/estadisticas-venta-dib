@@ -253,9 +253,23 @@ def estandarizar(df):
         n3 = np.where(m, c3, n3)
 
     resueltos = set(CANAL_MAP) | {'PUNTO DE VENTA'}
-    n_sin_canal = int(canal_up.isna().sum())
+    n_sin_canal_antes = int(pd.isna(n1).sum())
+
+    # Respaldo (28-09-2026): si x_canal vino vacio en Odoo y por eso Canal_N1/N2/N3
+    # quedaron en blanco, pero el propio 'local' ya deja clara la categoria (ej.
+    # 'M PLACE DEXP' -- marketplace de Decoexpress, inequivocamente B2C), no hace
+    # falta dejarlo sin clasificar. Caso confirmado por el usuario: DECOEXPRESS con
+    # local='M PLACE DEXP'.
+    sin_canal = pd.isna(n1)
+    es_mkp_dexp = sin_canal & out['local'].astype(str).str.upper().str.contains('M PLACE')
+    n1 = np.where(es_mkp_dexp, 'B2C', n1)
+    n2 = np.where(es_mkp_dexp, 'Marketplace', n2)
+    n3 = np.where(es_mkp_dexp, 'Marketplace', n3)
+
+    n_sin_canal = int(pd.isna(n1).sum())
     if n_sin_canal:
-        print(f'AVISO: {n_sin_canal} filas sin x_canal (vacio en Odoo) -> Canal_N1/N2/N3 quedan en blanco, revisar a mano')
+        print(f'AVISO: {n_sin_canal} filas sin x_canal (vacio en Odoo) y sin local reconocible '
+              f'-> Canal_N1/N2/N3 quedan en blanco, revisar a mano')
     for c in sorted(set(canal_up.dropna().unique()) - resueltos):
         sin_mapa.add(c)
     if sin_mapa:
