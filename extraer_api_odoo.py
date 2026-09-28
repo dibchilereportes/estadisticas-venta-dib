@@ -244,6 +244,10 @@ def estandarizar(df):
 
     n1 = np.where(es_pdv, 'B2C', n1)
     n2 = np.where(es_pdv & es_bazhars, 'Locales Bazhars', np.where(es_pdv, 'Locales DIB', n2))
+    # Canal_N3 para Punto de Venta nunca se llenaba (quedaba en blanco / 'sin dato')
+    # -- en el historico, Canal_N3 de un local fisico es el nombre del local mismo.
+    # Confirmado por el usuario (28-09-2026), caso Decostore/Bazhars sin Detalle canal.
+    n3 = np.where(es_pdv, out['local'], n3)
 
     sin_mapa = set()
     for canal, (c1, c2, c3, incluir) in CANAL_MAP.items():
