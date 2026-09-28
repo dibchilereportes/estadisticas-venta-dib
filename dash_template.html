@@ -12,6 +12,7 @@
   --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10); --hover:rgba(11,11,11,.045);
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
   --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
+  --brand1:#0d2846; --brand2:#1d4f8c; --brand3:#2f6bb3; --brand-ink:#fff;
   --font: system-ui,-apple-system,"Segoe UI",sans-serif;
   --shadow: 0 1px 2px rgba(11,11,11,.05), 0 6px 20px rgba(11,11,11,.07);
 }
@@ -46,11 +47,28 @@ button,input,select{font:inherit;color:var(--ink)}
 #shell{display:grid;grid-template-columns:272px 1fr;height:100vh}
 /* ---------- sidebar ---------- */
 aside{background:var(--side);border-right:1px solid var(--ring);display:flex;flex-direction:column;min-height:0}
-.side-top{padding:12px 14px 10px;border-bottom:1px solid var(--ring)}
-.side-top h1{font-size:14.5px;margin:0 0 2px;font-weight:650;letter-spacing:-.01em}
-.side-top .sub{font-size:11px;color:var(--muted);display:block;margin-bottom:9px;line-height:1.35}
+.side-top{padding:16px 14px 14px;border-bottom:1px solid var(--ring);
+  background:linear-gradient(135deg,var(--brand2),var(--brand1))}
+.brand-row{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+.brand-badge{flex:none;width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.32);display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:750;font-size:11px;letter-spacing:.01em}
+.side-top h1{font-size:14.5px;margin:0 0 2px;font-weight:650;letter-spacing:-.01em;color:#fff}
+.side-top .sub{font-size:11px;color:rgba(255,255,255,.72);display:block;line-height:1.35}
+.emp-box{margin:0 0 13px}
+.emp-lbl{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;
+  color:rgba(255,255,255,.62);margin-bottom:6px;font-weight:700}
+.emp-seg{display:flex;flex-wrap:wrap;gap:5px}
+.emp-btn{flex:1 1 auto;min-width:64px;padding:7px 8px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.32);background:rgba(255,255,255,.10);color:#fff;
+  font-size:11px;font-weight:650;cursor:pointer;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;text-align:center;transition:background .12s,border-color .12s}
+.emp-btn:hover{background:rgba(255,255,255,.2)}
+.emp-btn.active{background:#fff;color:var(--brand2);border-color:#fff}
 .side-actions{display:flex;gap:6px}
-.side-actions .btn{flex:1;font-size:11.5px;padding:5px 6px;text-align:center}
+.side-actions .btn{flex:1;font-size:11.5px;padding:5px 6px;text-align:center;
+  background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.32);color:#fff}
+.side-actions .btn:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
 .side-scroll{overflow-y:auto;flex:1;padding:6px 0 24px}
 .fgroup{border-bottom:1px solid var(--ring)}
 .fhead{width:100%;background:none;border:0;display:flex;align-items:center;gap:7px;
@@ -87,10 +105,13 @@ main{overflow-y:auto;min-height:0;padding:0 0 34px}
 .chip button:hover{background:var(--hover);color:var(--ink)}
 .chip.none{padding:2px 10px;color:var(--muted)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px;padding:12px 20px 0}
-.kpi{background:var(--surface);border:1px solid var(--ring);border-radius:13px;padding:9px 12px;box-shadow:var(--shadow)}
-.kpi .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
-.kpi .val{font-size:21px;font-weight:600;margin-top:2px;letter-spacing:-.02em}
-.kpi .note{font-size:11px;color:var(--ink2);margin-top:1px}
+.kpi{background:linear-gradient(135deg,var(--brand2),var(--brand1));border:1px solid rgba(255,255,255,.14);
+  border-radius:13px;padding:10px 13px;box-shadow:var(--shadow);color:#fff}
+.kpi:nth-child(3n+2){background:linear-gradient(135deg,var(--brand3),var(--brand2))}
+.kpi:nth-child(3n+3){background:linear-gradient(135deg,var(--brand1),#081a30)}
+.kpi .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:rgba(255,255,255,.72)}
+.kpi .val{font-size:21px;font-weight:700;margin-top:3px;letter-spacing:-.02em;color:#fff}
+.kpi .note{font-size:11px;color:rgba(255,255,255,.68);margin-top:1px}
 .wrap{padding:12px 20px 0}
 .card{background:var(--surface);border:1px solid var(--ring);border-radius:15px;padding:12px 14px 8px;margin-bottom:12px;box-shadow:var(--shadow)}
 .card h2{font-size:12.5px;font-weight:600;margin:0;letter-spacing:.01em}
@@ -114,8 +135,10 @@ tbody tr:hover{background:var(--hover)}
 .tblwrap{max-height:360px;overflow:auto}
 .row-note{font-size:11px;color:var(--muted);margin:7px 0 0}
 .kpis-mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:8px;margin:2px 0 11px}
-.kpis-mini .kpi{background:var(--plane);padding:8px 10px;border-radius:11px;box-shadow:none}
-.kpis-mini .kpi .val{font-size:17px}
+.kpis-mini .kpi{background:var(--plane);padding:8px 10px;border-radius:11px;box-shadow:none;color:var(--ink)}
+.kpis-mini .kpi .lab{color:var(--muted)}
+.kpis-mini .kpi .note{color:var(--ink2)}
+.kpis-mini .kpi .val{font-size:17px;color:var(--ink)}
 #qv-tbl td:last-child,#qv-tbl th:last-child{color:var(--ink2)}
 #qv-tbl td.tot{font-weight:600;color:var(--ink)}
 th.tot,td.tot{border-left:1px solid var(--grid)}
@@ -145,13 +168,17 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
   background:var(--plane);z-index:70;padding:22px}
 #gate form{background:var(--surface);border:1px solid var(--ring);border-radius:12px;
   padding:26px 24px;width:100%;max-width:340px;box-shadow:0 10px 40px rgba(0,0,0,.10)}
+#gate .brand-badge{width:38px;height:38px;border-radius:10px;
+  background:linear-gradient(135deg,var(--brand2),var(--brand1));color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:750;font-size:12px;margin-bottom:12px}
 #gate h1{font-size:17px;margin:0 0 3px;font-weight:650;letter-spacing:-.01em}
 #gate p{font-size:12px;color:var(--muted);margin:0 0 18px}
 #gate input[type=password]{width:100%;padding:10px 12px;font-size:15px;border-radius:8px;
   border:1px solid var(--axis);background:var(--plane);margin-bottom:12px}
 #gate .rec{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink2);margin-bottom:16px}
 #gate .rec input{accent-color:var(--s1)}
-#gate .btn{width:100%;padding:10px;font-size:14px;font-weight:600;background:var(--s1);
+#gate .btn{width:100%;padding:10px;font-size:14px;font-weight:600;
+  background:linear-gradient(135deg,var(--brand3),var(--brand1));
   color:#fff;border:0;border-radius:8px}
 #gate .err{color:#d03b3b;font-size:12.5px;margin-top:11px;text-align:center}
 .menu{position:fixed;z-index:30;background:var(--surface);border:1px solid var(--axis);
@@ -218,6 +245,7 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
 </div>
 <div id="gate" hidden>
   <form id="gate-f">
+    <div class="brand-badge">DIB</div>
     <h1>Estadísticas de Venta</h1>
     <p>DIB · Decoexpress — contenido restringido</p>
     <input type="password" id="gate-p" placeholder="Clave de acceso" autocomplete="current-password" required>
@@ -229,14 +257,23 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
 <div id="shell" hidden>
   <div class="mbar">
     <button class="btn" id="mfil">☰ Filtros<span class="nfil" hidden></span></button>
-    <h1>Estadísticas de Venta</h1>
+    <h1 id="mbar-title">Estadísticas de Venta</h1>
     <button class="btn" id="mexp" title="Exportar">⤓</button>
   </div>
   <div id="scrim"></div>
   <aside>
     <div class="side-top">
-      <h1>Estadísticas de Venta</h1>
-      <span class="sub" id="hdr-sub"></span>
+      <div class="brand-row">
+        <div class="brand-badge">DIB</div>
+        <div>
+          <h1>Estadísticas de Venta</h1>
+          <span class="sub" id="hdr-sub"></span>
+        </div>
+      </div>
+      <div class="emp-box">
+        <label class="emp-lbl">Empresa</label>
+        <div class="emp-seg" id="empresa-sel" role="radiogroup" aria-label="Empresa"></div>
+      </div>
       <div class="side-actions">
         <button class="btn" id="reset">Limpiar todo</button>
         <button class="btn" id="exp">Exportar ▾</button>
@@ -473,7 +510,6 @@ function truncar(txt,maxPx,px){
 
 // dimensión, etiqueta, ¿orden natural?, ¿abierto al inicio?, ¿en el selector de ranking?
 const FILTROS=[
-  ['Empresa','Empresa',0,1,1,1],
   ['Año','Año',1,1,0],['Mes','Mes',1,0,0],
   ['Canal_N1','Canal',0,1,1],['Canal_N2','Sub-canal',0,1,1],['Canal_N3','Detalle canal',0,0,1],
   ['DesgloseEntrega','Destino de entrega',0,0,1],
@@ -563,7 +599,7 @@ async function arrancar(bin){
     (c.k.length<=1? D.meas : D.codes)[c.k]=vista;
   }
   $('hdr-sub').textContent=D.meta.sub;
-  buildSidebar(); buildRankSelect();
+  buildEmpresaSelector(); buildSidebar(); buildRankSelect();
   $('loading').hidden=true; $('shell').hidden=false;
   render();
 }
@@ -590,6 +626,36 @@ function agg(m,keyFn){
     r.v+=V[i];r.c+=C[i];r.q+=Q[i];r.d+=L[i];
   }
   return out;
+}
+
+/* ---------- selector de empresa (mandatorio, siempre 1 seleccionada) ---------- */
+const EMPRESA_ORDEN=['EDUARDO DIB','DECOSTORE','DECOEXPRESS','INTEREMPRESAS'];
+const EMPRESA_DEFECTO='EDUARDO DIB';
+function buildEmpresaSelector(){
+  const k='Empresa', vals=D.dims[k];
+  sel[k]=new Set();
+  const orden=vals.map((_,i)=>i).sort((a,b)=>{
+    const ia=EMPRESA_ORDEN.indexOf(vals[a]), ib=EMPRESA_ORDEN.indexOf(vals[b]);
+    return (ia<0?99:ia)-(ib<0?99:ib);
+  });
+  const cont=$('empresa-sel'); cont.innerHTML='';
+  let defecto=orden[0];
+  orden.forEach(i=>{
+    if(vals[i]===EMPRESA_DEFECTO) defecto=i;
+    const b=document.createElement('button');
+    b.type='button'; b.className='emp-btn'; b.textContent=vals[i];
+    b.setAttribute('role','radio'); b.dataset.i=i;
+    b.onclick=()=>{
+      sel[k].clear(); sel[k].add(i);
+      cont.querySelectorAll('.emp-btn').forEach(x=>x.classList.toggle('active',+x.dataset.i===i));
+      const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+vals[i];
+      render();
+    };
+    cont.appendChild(b);
+  });
+  sel[k].add(defecto);
+  cont.querySelectorAll('.emp-btn').forEach(x=>x.classList.toggle('active',+x.dataset.i===defecto));
+  const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+vals[defecto];
 }
 
 /* ---------- sidebar ---------- */
@@ -639,7 +705,7 @@ function buildSidebar(){
     cont.appendChild(g);
   });
   $('reset').onclick=()=>{
-    for(const k in sel){sel[k].clear(); UI[k].opts.forEach(o=>o.cb.checked=false);}
+    for(const k in sel){ if(k==='Empresa') continue; sel[k].clear(); UI[k].opts.forEach(o=>o.cb.checked=false);}
     render();
   };
   $('theme').onclick=()=>{
