@@ -267,7 +267,12 @@ def estandarizar(df):
     # Bazhars es la marca retail de Decostore -- antes de esto, ninguna fila de la API
     # quedaba clasificada como DECOSTORE (bug encontrado 27-09-2026: es_bazhars solo
     # miraba x_branch crudo, que ya no trae el prefijo 'BAZHARS').
-    out['Empresa'] = np.select([es_bazhars, es_decoexpress], ['DECOSTORE', 'DECOEXPRESS'],
+    # Excepcion confirmada por el usuario (28-09-2026): BAZHARS VITACURA es, a pesar
+    # del nombre/marca Bazhars, una tienda de la empresa EDUARDO DIB (no Decostore).
+    # Sigue clasificada como canal 'Locales Bazhars' (es_bazhars sin cambios arriba),
+    # solo se excluye de la asignacion de Empresa=DECOSTORE.
+    es_decostore = es_bazhars & (out['local'] != 'BAZHARS VITACURA')
+    out['Empresa'] = np.select([es_decostore, es_decoexpress], ['DECOSTORE', 'DECOEXPRESS'],
                                default='EDUARDO DIB')
 
     # columnas legado que ya no se pueblan (se mantienen para compatibilidad de esquema)
