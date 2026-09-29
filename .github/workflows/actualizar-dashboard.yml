@@ -2,7 +2,11 @@ name: Actualizar dashboard ventas DIB
 
 on:
   schedule:
-    - cron: '0 13 * * *'   # 9am Chile (hora estandar, UTC-4); ~10am en horario de verano
+    - cron: '7 8 * * *'    # ~5am Chile (horario de verano, UTC-3); ~4am en hora estandar.
+                            # Minuto no redondo para esquivar la congestion de GitHub
+                            # Actions en :00 -- igual puede atrasarse 1-5h, pero al correr
+                            # de madrugada (despues del cierre de cajas) el resultado queda
+                            # listo mas temprano y el dia anterior sale mas completo.
   workflow_dispatch: {}
 
 permissions:
