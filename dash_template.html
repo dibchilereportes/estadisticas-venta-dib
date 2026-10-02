@@ -317,9 +317,9 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
       <div class="card">
         <div class="hd">
           <div><h2>Comparativo entre años</h2>
-          <p class="cap">Mismo año base que la Empresa elegida arriba. Compara venta, costo,
-            margen, unidades, clientes o documentos distintos entre dos años, por canal, local,
-            línea, vendedor, etc.</p></div>
+          <p class="cap">Compara dos años por canal, local, línea, vendedor, etc. Venta, costo,
+            margen y unidades respetan los filtros del panel (igual que el resto del dashboard);
+            clientes y documentos distintos solo respetan la Empresa elegida arriba.</p></div>
           <div class="cmp-ctrl">
             <select id="cmp-a"></select>
             <span class="cmp-vs">vs</span>
@@ -328,6 +328,7 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
             <select id="cmp-metrica"></select>
           </div>
         </div>
+        <div class="kpis-mini" id="cmp-kpis"></div>
         <div class="legend" id="cmp-lg"></div>
         <svg id="ch-cmp" height="340" role="img" aria-label="Comparativo entre años"></svg>
         <div class="tblwrap"><table id="cmp-tbl"><thead></thead><tbody></tbody></table></div>
@@ -784,27 +785,72 @@ function cmpFmt(metrica,val){
   if(metrica==='N'||metrica==='M') return NF.format(val);
   return fmtM(val);
 }
+// como maskExcept(null), pero forzando Año=yearCode -- respeta todos los demas filtros
+// activos en el panel (Empresa, Línea, Canal, etc.), incluido el de la propia dimension
+// de desglose si el usuario tambien la tiene filtrada ahi.
+function maskYear(yearCode){
+  const m=new Uint8Array(N).fill(1), c=D.codes;
+  for(let i=0;i<N;i++) if(c['Año'][i]!==yearCode) m[i]=0;
+  for(const k in sel){
+    if(k==='Año') continue;
+    const s=sel[k]; if(!s||!s.size) continue;
+    for(let i=0;i<N;i++) if(m[i]&&!s.has(c[k][i])) m[i]=0;
+  }
+  return m;
+}
 function cmpChart(){
   if(!Dc || !sel['Empresa'] || !sel['Empresa'].size) return;
   const dimName=$('cmp-dim').value, metrica=$('cmp-metrica').value;
   const aLab=$('cmp-a').value, bLab=$('cmp-b').value;
-  const empIdx=[...sel['Empresa']][0], empLab=D.dims['Empresa'][empIdx];
-  const dimsC=Dc.dims, codesC=Dc.codes, measC=Dc.meas;
-  const empCode=dimsC['Empresa'].indexOf(empLab), dimCode=dimsC['Dim'].indexOf(dimName);
-  const aCode=dimsC['Año'].indexOf(aLab), bCode=dimsC['Año'].indexOf(bLab);
-  const valores=dimsC['Valor'];
-  const mapA=new Map(), mapB=new Map();
-  for(let i=0;i<Nc;i++){
-    if(codesC['Empresa'][i]!==empCode || codesC['Dim'][i]!==dimCode) continue;
-    const ac=codesC['Año'][i]; if(ac!==aCode && ac!==bCode) continue;
-    const vc=codesC['Valor'][i];
-    const row={v:measC['V'][i],c:measC['C'][i],q:measC['Q'][i],n:measC['N'][i],m:measC['M'][i]};
-    (ac===aCode? mapA : mapB).set(vc,row);
+  const usaCuboPrincipal = metrica==='V'||metrica==='C'||metrica==='Q'||metrica==='P';
+  let filas, totA, totB;
+
+  if(usaCuboPrincipal){
+    // Venta/Costo/Margen/Unidades: respeta TODOS los filtros activos del panel.
+    const aCode=D.dims['Año'].indexOf(aLab), bCode=D.dims['Año'].indexOf(bLab);
+    const mA=maskYear(aCode), mB=maskYear(bCode);
+    const code=D.codes[dimName], labs=D.dims[dimName];
+    const aggA=agg(mA,i=>code[i]), aggB=agg(mB,i=>code[i]);
+    const keys=new Set([...aggA.keys(),...aggB.keys()]);
+    filas=[...keys].map(k=>({
+      valor:labs[k], a:cmpMetrica(aggA.get(k),metrica), b:cmpMetrica(aggB.get(k),metrica)
+    })).sort((x,y)=>y.b-x.b);
+    const tA=agg(mA,()=>0).get(0), tB=agg(mB,()=>0).get(0);
+    totA=cmpMetrica(tA,metrica); totB=cmpMetrica(tB,metrica);
+  } else {
+    // Clientes/Documentos distintos: solo respeta la Empresa elegida arriba (ver nota
+    // en la tarjeta) -- el cubo principal ya viene sumado y no permite nunique real
+    // para cualquier combinacion de filtros.
+    const empIdx=[...sel['Empresa']][0], empLab=D.dims['Empresa'][empIdx];
+    const dimsC=Dc.dims, codesC=Dc.codes, measC=Dc.meas;
+    const empCode=dimsC['Empresa'].indexOf(empLab), dimCode=dimsC['Dim'].indexOf(dimName);
+    const totCode=dimsC['Dim'].indexOf('TOTAL');
+    const aCode=dimsC['Año'].indexOf(aLab), bCode=dimsC['Año'].indexOf(bLab);
+    const valores=dimsC['Valor'];
+    const mapA=new Map(), mapB=new Map();
+    let totRowA=null, totRowB=null;
+    for(let i=0;i<Nc;i++){
+      if(codesC['Empresa'][i]!==empCode) continue;
+      const ac=codesC['Año'][i]; if(ac!==aCode && ac!==bCode) continue;
+      const row={v:measC['V'][i],c:measC['C'][i],q:measC['Q'][i],n:measC['N'][i],m:measC['M'][i]};
+      if(codesC['Dim'][i]===totCode){ if(ac===aCode) totRowA=row; else totRowB=row; continue; }
+      if(codesC['Dim'][i]!==dimCode) continue;
+      const vc=codesC['Valor'][i];
+      (ac===aCode? mapA : mapB).set(vc,row);
+    }
+    const codesSet=new Set([...mapA.keys(),...mapB.keys()]);
+    filas=[...codesSet].map(vc=>({
+      valor:valores[vc], a:cmpMetrica(mapA.get(vc),metrica), b:cmpMetrica(mapB.get(vc),metrica)
+    })).sort((x,y)=>y.b-x.b);
+    totA=cmpMetrica(totRowA,metrica); totB=cmpMetrica(totRowB,metrica);
   }
-  const codesSet=new Set([...mapA.keys(),...mapB.keys()]);
-  const filas=[...codesSet].map(vc=>({
-    valor:valores[vc], a:cmpMetrica(mapA.get(vc),metrica), b:cmpMetrica(mapB.get(vc),metrica)
-  })).sort((x,y)=>y.b-x.b);
+
+  const pctTot=totA?((totB-totA)/Math.abs(totA)*100):(totB>0?null:0);
+  $('cmp-kpis').innerHTML=[
+    [aLab,cmpFmt(metrica,totA),usaCuboPrincipal?'con los filtros activos':'Empresa '+([...sel['Empresa']].length?D.dims['Empresa'][[...sel['Empresa']][0]]:'')],
+    [bLab,cmpFmt(metrica,totB),usaCuboPrincipal?'con los filtros activos':'Empresa '+([...sel['Empresa']].length?D.dims['Empresa'][[...sel['Empresa']][0]]:'')],
+    ['Variación',pctTot===null?'nuevo':NF1.format(pctTot)+' %',aLab+' → '+bLab]
+  ].map(([l,v,n])=>`<div class="kpi"><div class="lab">${l}</div><div class="val">${v}</div><div class="note">${n}</div></div>`).join('');
 
   const svg=$('ch-cmp'), top=filas.slice(0,12);
   const W=svg.clientWidth||600, bh=10, rowH=bh*2+14;

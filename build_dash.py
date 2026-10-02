@@ -49,6 +49,17 @@ def construir(parquet, template, salida, clave=None):
                .reset_index().rename(columns={dim: 'Valor'}))
         g.insert(2, 'Dim', dim)
         piezas.append(g)
+    # fila TOTAL (Dim='TOTAL', Valor='(todos)'): nunique real de clientes/documentos
+    # para toda la Empresa+Año, sin desglosar -- sumar el nunique de cada categoria
+    # de un desglose sobredimensiona (un mismo cliente puede comprar por mas de un
+    # canal/local/linea), asi que el total real necesita su propio groupby aparte.
+    tot = (v.groupby(['Empresa','Año'], observed=True, dropna=False)
+             .agg(V=('Venta','sum'), C=('Costo','sum'), Q=('Qval','sum'),
+                  N=('ClienteKey','nunique'), M=('Factura','nunique'))
+             .reset_index())
+    tot.insert(2, 'Dim', 'TOTAL')
+    tot.insert(3, 'Valor', '(todos)')
+    piezas.append(tot)
     cmp_df = pd.concat(piezas, ignore_index=True)
 
     # ---- payload binario columnar --------------------------------------------
