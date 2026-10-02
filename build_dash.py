@@ -6,6 +6,20 @@ import numpy as np, pandas as pd
 TOP_CLIENTES = 300
 DIMS = ['Empresa','Año','Mes','Canal_N1','Canal_N2','Canal_N3','DesgloseEntrega','local','LINEA_STD',
         'CATEGORIA_STD','FAMILIA_STD','Descontinuado','TipoDoc','Cli','Vendedor']
+# Dimensiones de desglose disponibles en la vista Comparativo (Empresa/Año van aparte,
+# como filtro y como eje de comparacion respectivamente).
+COMP_DIMS = ['Canal_N1','Canal_N2','Canal_N3','local','LINEA_STD','CATEGORIA_STD','Vendedor','TipoDoc']
+
+def _codificar_dim(serie):
+    """str(valor) + relleno de vacios + categorias ordenadas -> (dims, codigos, dtype)."""
+    s = pd.Series([str(x) for x in serie], index=serie.index)
+    s = s.replace({'nan':'(sin dato)','None':'(sin dato)','':'(sin dato)',
+                   '<NA>':'(sin dato)','NaT':'(sin dato)'})
+    cats = sorted(s.unique().tolist())
+    idx = {x: i for i, x in enumerate(cats)}
+    cod = np.array([idx[x] for x in s])
+    dt = 'u1' if len(cats) <= 255 else ('u2' if len(cats) <= 65535 else 'i4')
+    return cats, cod.astype(dt), dt
 
 def construir(parquet, template, salida, clave=None):
     v = pd.read_parquet(parquet)
@@ -21,36 +35,57 @@ def construir(parquet, template, salida, clave=None):
            .reset_index())
     sub = (f"{len(v):,} líneas · {v.Fecha.min():%d-%m-%Y} a {v.Fecha.max():%d-%m-%Y} · "
            f"cifras en miles de pesos").replace(',','.')
+
+    # ---- cubo comparativo (vista "Comparativo", agosto-2026) -----------------
+    # Tabla larga agrupada por (Empresa, Año, Dim, Valor) para cada dimension de
+    # desglose en COMP_DIMS -- mucho mas chica que el cubo principal (no cruza
+    # dimensiones entre si), y permite nunique real de clientes/documentos por
+    # cada combinacion, cosa que el cubo principal no puede dar (ya viene sumado).
+    piezas = []
+    for dim in COMP_DIMS:
+        g = (v.groupby(['Empresa','Año', dim], observed=True, dropna=False)
+               .agg(V=('Venta','sum'), C=('Costo','sum'), Q=('Qval','sum'),
+                    N=('ClienteKey','nunique'), M=('Factura','nunique'))
+               .reset_index().rename(columns={dim: 'Valor'}))
+        g.insert(2, 'Dim', dim)
+        piezas.append(g)
+    cmp_df = pd.concat(piezas, ignore_index=True)
+
     # ---- payload binario columnar --------------------------------------------
     # El formato anterior (JSON con 1,7 millones de números) reventaba la memoria de
     # Safari en iPhone al hacer JSON.parse. Ahora las columnas viajan como typed arrays
     # dentro de un solo buffer: el navegador crea vistas sobre él sin copiar ni parsear.
-    header = {"n": len(c), "dims": {}, "cols": [], "meta": {"sub": sub}}
-    columnas = []                                   # (clave, dtype numpy, arreglo)
+    header = {"n": len(c), "dims": {}, "cols": [], "meta": {"sub": sub},
+              "cmp": {"n": len(cmp_df), "dims": {}, "cols": []}}
+    columnas = []                                   # (seccion, clave, dtype numpy, arreglo)
     for k in DIMS:
-        s = pd.Series([str(x) for x in c[k]], index=c.index)
-        s = s.replace({'nan':'(sin dato)','None':'(sin dato)','':'(sin dato)',
-                       '<NA>':'(sin dato)','NaT':'(sin dato)'})
-        cats = sorted(s.unique().tolist())
-        idx = {x: i for i, x in enumerate(cats)}
+        cats, cod, dt = _codificar_dim(c[k])
         header["dims"][k] = cats
-        cod = np.array([idx[x] for x in s])
-        dt = 'u1' if len(cats) <= 255 else ('u2' if len(cats) <= 65535 else 'i4')
-        columnas.append((k, dt, cod.astype(dt)))
+        columnas.append(('main', k, dt, cod))
     # Venta y Costo en float64: son la base de todos los totales y del margen.
     # Cantidad y Líneas toleran float32/int32 sin afectar los agregados.
     for m, dt in [("V", 'f8'), ("C", 'f8'), ("Q", 'f4'), ("D", 'i4')]:
-        columnas.append((m, dt, c[m].to_numpy().astype(dt)))
+        columnas.append(('main', m, dt, c[m].to_numpy().astype(dt)))
+
+    for k in ['Empresa', 'Año', 'Dim', 'Valor']:
+        cats, cod, dt = _codificar_dim(cmp_df[k])
+        header["cmp"]["dims"][k] = cats
+        columnas.append(('cmp', k, dt, cod))
+    # V/C/Q: venta, costo, cantidad (mismo criterio que el cubo principal).
+    # N: clientes distintos (nunique ClienteKey). M: documentos distintos (nunique Factura).
+    for m, dt in [("V", 'f8'), ("C", 'f8'), ("Q", 'f4'), ("N", 'i4'), ("M", 'i4')]:
+        columnas.append(('cmp', m, dt, cmp_df[m].to_numpy().astype(dt)))
 
     ORDEN = {'f8': 0, 'i4': 1, 'f4': 1, 'u2': 2, 'u1': 3}   # mayor alineación primero
-    columnas.sort(key=lambda t: ORDEN[t[1]])
+    columnas.sort(key=lambda t: ORDEN[t[2]])
     cuerpo, off = [], 0
-    for k, dt, arr in columnas:
+    for seccion, k, dt, arr in columnas:
         ancho = arr.dtype.itemsize
         pad = (-off) % ancho                        # cada vista debe quedar alineada
         if pad:
             cuerpo.append(b'\x00' * pad); off += pad
-        header["cols"].append({"k": k, "t": dt, "off": off})
+        destino = header["cols"] if seccion == 'main' else header["cmp"]["cols"]
+        destino.append({"k": k, "t": dt, "off": off})
         cuerpo.append(arr.tobytes()); off += arr.nbytes
 
     # Los offsets son relativos al inicio del cuerpo; el navegador calcula la base
@@ -79,7 +114,7 @@ def construir(parquet, template, salida, clave=None):
         b64 = base64.b64encode(crudo).decode()
     html = html.replace('__DATA__', b64)
     open(salida,'w',encoding='utf-8').write(html)
-    print(f"filas cubo={len(c):,}  html={os.path.getsize(salida)/1e6:.2f} MB")
+    print(f"filas cubo={len(c):,}  filas comparativo={len(cmp_df):,}  html={os.path.getsize(salida)/1e6:.2f} MB")
 
 if __name__ == "__main__":
     construir(sys.argv[1] if len(sys.argv)>1 else 'out2/ventas_bdd.parquet',
