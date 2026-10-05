@@ -421,6 +421,8 @@ function sheetXML(cols, rows){
   const L=n=>{let s='';n++;while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=(n-1-r)/26}return s};
   const out=['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+    // sheetViews va ANTES de cols (orden del esquema OOXML); Excel rechaza el archivo si no
+    '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>',
     '<cols>'+cols.map((c,i)=>`<col min="${i+1}" max="${i+1}" width="${c.w||14}" customWidth="1"/>`).join('')+'</cols>',
     '<sheetData>'];
   out.push('<row r="1">'+cols.map((c,i)=>
@@ -440,7 +442,7 @@ function sheetXML(cols, rows){
   });
   out.push('</sheetData>',
     `<autoFilter ref="A1:${L(cols.length-1)}${rows.length+1}"/>`,
-    '<sheetViews/></worksheet>');
+    '</worksheet>');
   return out.join('');
 }
 const STYLES=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
