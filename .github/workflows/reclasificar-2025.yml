@@ -1,0 +1,47 @@
+name: Reclasificar 2025 (solo lectura)
+
+# Solo manual. Trae 2025 de Odoo, aplica la clasificacion gerencial y guarda
+# datos/informe_cd_2025.parquet en el repo PRIVADO. No toca ventas_bdd.parquet ni el dashboard.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  reclasificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout repo de datos (privado)
+        uses: actions/checkout@v4
+        with:
+          repository: dibchilereportes/estadisticas-venta-dib-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: datos-repo
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install pandas numpy pyarrow
+
+      - name: Preparar matriz
+        run: cp datos-repo/datos/clasificacion_gerencial.csv clasificacion_gerencial.csv
+
+      - name: Extraer y clasificar 2025
+        env:
+          ODOO_URL: ${{ secrets.ODOO_URL }}
+          ODOO_DB: ${{ secrets.ODOO_DB }}
+          ODOO_USER: ${{ secrets.ODOO_USER }}
+          ODOO_KEY: ${{ secrets.ODOO_KEY }}
+        run: python reclasificar_2025.py
+
+      - name: Guardar en repo privado
+        run: |
+          cp datos/informe_cd_2025.parquet datos-repo/datos/informe_cd_2025.parquet
+          cd datos-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add datos/informe_cd_2025.parquet
+          git diff --cached --quiet || git commit -m "Reclasificacion 2025 $(date +%d-%m-%Y)"
+          git push
