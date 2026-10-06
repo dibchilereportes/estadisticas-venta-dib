@@ -329,7 +329,18 @@ def main():
     # falla, se avisa y se sigue: no debe romper la actualizacion diaria del dashboard.
     try:
         from clasificacion_gerencial import clasificar
-        nuevo = nuevo.join(clasificar(df_api))
+        cl = clasificar(df_api)
+        nuevo = nuevo.join(cl)
+        # tabla diaria agregada en PESOS (llave de clasificacion) para el informe CD diario
+        base = df_api[['x_date', 'x_customer', 'x_branch', 'x_canal', 'x_cuenta_analytica', 'x_linea',
+                       'x_tipo_dte', 'x_total_venta', 'x_margen_contribucion']].join(cl)
+        llave = ['x_date', 'x_customer', 'x_branch', 'x_canal', 'x_cuenta_analytica', 'x_linea', 'x_tipo_dte',
+                 'ClasifGerencial', 'LineaComercial', 'BloqueInforme', 'EntraInforme_CD', 'MotivoExclusion']
+        tabla = (base.groupby(llave, dropna=False, as_index=False)
+                     .agg(venta=('x_total_venta', 'sum'), contribucion=('x_margen_contribucion', 'sum'),
+                          lineas=('x_total_venta', 'size')))
+        tabla.to_parquet('datos/informe_cd_2026.parquet', index=False)
+        print(f'informe_cd_2026.parquet: {len(tabla)} filas')
         print('Clasificacion gerencial: ' +
               nuevo['EntraInforme_CD'].value_counts().to_dict().__str__())
     except Exception as e:

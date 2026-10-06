@@ -32,6 +32,7 @@ jobs:
           cp datos-repo/datos/ventas_bdd.parquet datos/ventas_bdd.parquet
           cp datos-repo/datos/cubo_mes.parquet datos/cubo_mes.parquet
           cp datos-repo/datos/clasificacion_gerencial.csv clasificacion_gerencial.csv || echo "AVISO: sin matriz de clasificacion"
+          cp datos-repo/datos/informe_cd_2025.parquet datos-repo/datos/metas_cliente_2026.csv datos-repo/datos/metas_linea_2026.csv datos/ || echo "AVISO: faltan datos del informe CD"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,7 +40,7 @@ jobs:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        run: pip install pandas pyarrow numpy cryptography
+        run: pip install pandas pyarrow numpy cryptography openpyxl holidays
 
       - name: Extraer datos de Odoo
         env:
@@ -48,6 +49,13 @@ jobs:
           ODOO_USER: ${{ secrets.ODOO_USER }}
           ODOO_KEY: ${{ secrets.ODOO_KEY }}
         run: python extraer_api_odoo.py
+
+      - name: Generar informe CD (ayer, hora Chile) - NO envia correo
+        continue-on-error: true
+        run: |
+          AYER=$(TZ=America/Santiago date -d 'yesterday' +%F)
+          mkdir -p informes
+          python informe_cd.py "$AYER" "informes/Informe_ventas_CD_${AYER}.xlsx" --datos datos
 
       - name: Reconstruir dashboard
         env:
@@ -66,9 +74,11 @@ jobs:
         run: |
           cp datos/ventas_bdd.parquet datos-repo/datos/ventas_bdd.parquet
           cp datos/cubo_mes.parquet datos-repo/datos/cubo_mes.parquet
+          cp datos/informe_cd_2026.parquet datos-repo/datos/informe_cd_2026.parquet || true
+          mkdir -p datos-repo/informes && cp informes/*.xlsx datos-repo/informes/ 2>/dev/null || true
           cd datos-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add datos
+          git add datos informes
           git diff --cached --quiet || git commit -m "Actualiza datos $(date +%d-%m-%Y)"
           git push
