@@ -237,6 +237,17 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
   .tblwrap{max-height:none}
 }
 @media(max-width:900px) and (orientation:landscape){ .fopts{max-height:38vh} }
+
+/* metas por local (editable) */
+#mt-tbl{border-collapse:collapse;font-size:11.5px;width:100%}
+#mt-tbl th,#mt-tbl td{padding:3px 4px;border-bottom:1px solid var(--ring);text-align:right;white-space:nowrap}
+#mt-tbl th:first-child,#mt-tbl td:first-child,#mt-tbl th:nth-child(2),#mt-tbl td:nth-child(2){text-align:left}
+#mt-tbl input{width:88px;text-align:right;background:var(--plane);border:1px solid var(--ring);border-radius:5px;padding:2px 5px;font-size:11.5px}
+#mt-tbl input.falta{border-color:#c0392b;background:rgba(192,57,43,.08)}
+#mt-tbl input.cambio{border-color:#2a7de1;font-weight:600}
+.mt-btns{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.mt-btns button{background:var(--plane);border:1px solid var(--ring);border-radius:8px;padding:5px 12px;cursor:pointer}
+.mt-btns button:hover{background:var(--hover)}
 </style>
 </head>
 <body>
@@ -333,6 +344,14 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
         <svg id="ch-cmp" height="340" role="img" aria-label="Comparativo entre años"></svg>
         <div class="tblwrap"><table id="cmp-tbl"><thead></thead><tbody></tbody></table></div>
         <p class="row-note" id="cmp-note"></p>
+      </div>
+      <div class="card" id="mt-card">
+        <div class="hd"><div><h2>Metas por local</h2>
+          <p class="cap">Metas 2026 por local, web y marketplace (cifras en pesos). Las celdas rojas no tienen meta cargada.
+            Edita, descarga el CSV y súbelo a <code>datos/metas_local_2026.csv</code> del repo privado: el informe diario lo toma desde ahí.</p></div></div>
+        <div class="mt-btns"><button id="mt-dl">Descargar CSV</button><button id="mt-rs">Descartar cambios</button>
+          <span class="cap" id="mt-st" style="margin:6px 0 0"></span></div>
+        <div class="tblwrap"><table id="mt-tbl"><thead></thead><tbody></tbody></table></div>
       </div>
       <div class="card" id="qv-card" hidden>
         <div class="hd"><div><h2>Vista rápida por vendedor</h2>
@@ -633,9 +652,60 @@ async function arrancar(bin){
     (c.k.length<=1? Dc.meas : Dc.codes)[c.k]=vista;
   }
   $('hdr-sub').textContent=D.meta.sub;
-  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls();
+  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls(); mtInit();
   $('loading').hidden=true; $('shell').hidden=false;
   render();
+}
+
+/* ---------- metas por local (editable, descarga CSV) ---------- */
+const MT_LS='metas_local_2026_borrador';
+let MT=[], MT0=[];
+const MT_MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function mtFmt(v){return v==null?'':String(v).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}
+function mtParse(t){const x=String(t).replace(/[^0-9]/g,'');return x===''?null:parseInt(x,10)}
+function mtBuild(){
+  const src=(D.meta.metas||[]);
+  MT0=src.map(r=>r[3].slice()); MT=MT0.map(a=>a.slice());
+  try{const b=JSON.parse(localStorage.getItem(MT_LS)||'null'); if(b&&b.length===MT.length) MT=b;}catch(e){}
+  const th=$('mt-tbl').tHead; th.innerHTML='<tr><th>cc</th><th>Local</th>'+MT_MESES.map(m=>'<th>'+m+'</th>').join('')+'</tr>';
+  const tb=$('mt-tbl').tBodies[0]; tb.innerHTML='';
+  src.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td>'+r[0]+'</td><td>'+r[2]+' <span class="cap" style="margin:0">'+r[1]+'</span></td>';
+    for(let m=0;m<12;m++){
+      const td=document.createElement('td'), inp=document.createElement('input');
+      inp.inputMode='numeric'; inp.value=mtFmt(MT[i][m]); inp.dataset.i=i; inp.dataset.m=m;
+      inp.addEventListener('input',()=>{MT[i][m]=mtParse(inp.value); mtMarca(inp,i,m); mtGuardar();});
+      inp.addEventListener('blur',()=>{inp.value=mtFmt(MT[i][m])});
+      mtMarca(inp,i,m); td.appendChild(inp); tr.appendChild(td);
+    }
+    tb.appendChild(tr);
+  });
+  mtEstado();
+}
+function mtMarca(inp,i,m){
+  inp.classList.toggle('falta',MT[i][m]==null);
+  inp.classList.toggle('cambio',MT[i][m]!==MT0[i][m]);
+}
+function mtGuardar(){try{localStorage.setItem(MT_LS,JSON.stringify(MT))}catch(e){} mtEstado();}
+function mtEstado(){
+  let c=0,f=0; MT.forEach((a,i)=>a.forEach((v,m)=>{if(v!==MT0[i][m])c++; if(v==null)f++;}));
+  $('mt-st').textContent=c+' cambio(s) sin descargar · '+f+' celda(s) sin meta';
+}
+function mtCSV(){
+  const src=D.meta.metas, L=['cc,Empresa,Nombre,Mes,Meta'];
+  src.forEach((r,i)=>MT[i].forEach((v,m)=>{if(v!=null) L.push([r[0],r[1],r[2],m+1,v].join(','))}));
+  return L.join('\r\n')+'\r\n';
+}
+function mtInit(){
+  if(!(D.meta.metas&&D.meta.metas.length)){$('mt-card').hidden=true;return}
+  mtBuild();
+  $('mt-dl').onclick=()=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob(['\ufeff'+mtCSV()],{type:'text/csv;charset=utf-8'}));
+    a.download='metas_local_2026.csv'; document.body.appendChild(a); a.click(); a.remove();
+  };
+  $('mt-rs').onclick=()=>{try{localStorage.removeItem(MT_LS)}catch(e){} mtBuild();};
 }
 // cerrar sesión: ?salir en la URL borra la clave recordada
 if(location.search.includes('salir')){ try{localStorage.removeItem(CLAVE_LS)}catch(e){} }

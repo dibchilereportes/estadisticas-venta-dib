@@ -21,6 +21,21 @@ def _codificar_dim(serie):
     dt = 'u1' if len(cats) <= 255 else ('u2' if len(cats) <= 65535 else 'i4')
     return cats, cod.astype(dt), dt
 
+def _leer_metas(parquet):
+    """Metas por local (metas_local_2026.csv junto al parquet) para el panel editable. Tolerante a fallos."""
+    try:
+        ruta = os.path.join(os.path.dirname(os.path.abspath(parquet)), 'metas_local_2026.csv')
+        m = pd.read_csv(ruta, encoding='utf-8-sig')
+        out = []
+        for (cc, emp, nom), g in m.groupby(['cc','Empresa','Nombre'], sort=False):
+            meses = [None]*12
+            for _, r in g.iterrows(): meses[int(r.Mes)-1] = int(r.Meta)
+            out.append([int(cc), emp, nom, meses])
+        return out
+    except Exception as e:
+        print('AVISO: sin metas por local para el panel:', e)
+        return []
+
 def construir(parquet, template, salida, clave=None):
     v = pd.read_parquet(parquet)
     tot = v.groupby('ClienteNombre', observed=True).Venta.sum().sort_values(ascending=False)
@@ -66,7 +81,7 @@ def construir(parquet, template, salida, clave=None):
     # El formato anterior (JSON con 1,7 millones de números) reventaba la memoria de
     # Safari en iPhone al hacer JSON.parse. Ahora las columnas viajan como typed arrays
     # dentro de un solo buffer: el navegador crea vistas sobre él sin copiar ni parsear.
-    header = {"n": len(c), "dims": {}, "cols": [], "meta": {"sub": sub},
+    header = {"n": len(c), "dims": {}, "cols": [], "meta": {"sub": sub, "metas": _leer_metas(parquet)},
               "cmp": {"n": len(cmp_df), "dims": {}, "cols": []}}
     columnas = []                                   # (seccion, clave, dtype numpy, arreglo)
     for k in DIMS:

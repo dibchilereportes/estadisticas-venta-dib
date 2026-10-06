@@ -27,8 +27,8 @@ def cargar(datos, fecha):
     v = pd.read_parquet(os.path.join(datos,'ventas_bdd.parquet'), columns=['local','Fecha','Venta','Empresa','Canal_N2','Canal_N3'])
     v['Venta'] = v['Venta'].astype('float64')*1000
     v = v[(v.Fecha>=min(fecha.replace(day=1), fecha-pd.Timedelta(days=20)))&(v.Fecha<=fecha)]
-    m = pd.read_csv(os.path.join(datos,'metas_local_2026.csv'))
-    h = pd.read_csv(os.path.join(datos,'historico_local_2025.csv'))
+    m = pd.read_csv(os.path.join(datos,'metas_local_2026.csv'), encoding='utf-8-sig')
+    h = pd.read_csv(os.path.join(datos,'historico_local_2025.csv'), encoding='utf-8-sig')
     return v, m, h
 
 def serie(v, sel, fecha):
