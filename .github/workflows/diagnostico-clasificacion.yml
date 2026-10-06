@@ -1,0 +1,44 @@
+name: Diagnostico clasificacion (solo lectura)
+
+# Solo manual. Vuelca llaves de clasificacion desde Odoo al repo PRIVADO de datos.
+# No modifica ventas_bdd.parquet ni el dashboard publico.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout repo de datos (privado)
+        uses: actions/checkout@v4
+        with:
+          repository: dibchilereportes/estadisticas-venta-dib-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: datos-repo
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install pandas numpy
+
+      - name: Extraer llaves de Odoo
+        env:
+          ODOO_URL: ${{ secrets.ODOO_URL }}
+          ODOO_DB: ${{ secrets.ODOO_DB }}
+          ODOO_USER: ${{ secrets.ODOO_USER }}
+          ODOO_KEY: ${{ secrets.ODOO_KEY }}
+        run: python diagnostico_clasificacion.py
+
+      - name: Guardar en repo privado
+        run: |
+          mkdir -p datos-repo/diagnostico
+          cp diagnostico/clasif_diaria.csv.gz datos-repo/diagnostico/
+          cd datos-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add diagnostico
+          git diff --cached --quiet || git commit -m "Diagnostico clasificacion $(date +%d-%m-%Y)"
+          git push
