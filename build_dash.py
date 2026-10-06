@@ -2,6 +2,7 @@
 """Genera el dashboard HTML autocontenido desde ventas_bdd.parquet."""
 import sys, os, json, gzip, base64, hashlib, secrets
 import numpy as np, pandas as pd
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 TOP_CLIENTES = 300
 DIMS = ['Empresa','Año','Mes','Canal_N1','Canal_N2','Canal_N3','DesgloseEntrega','local','LINEA_STD',
@@ -48,6 +49,26 @@ def clasificar_puntos_venta(v):
     poner(mk_baz, 'DECOSTORE', ('MKP ' + n3).where(n3.isin(MKP_DECO_N3), 'MKP Bazhars (sin detalle)'))
     poner(n2.eq('Marketplace') & emp.eq('DECOEXPRESS'), 'DECOEXPRESS', 'Marketplaces DECOEXPRESS')
     return neg, pv
+
+def _datos_cd(parquet):
+    """Datos del 'Informe CD' para la vista de niveles del dashboard (aggregados por mes). Tolerante a fallos."""
+    try:
+        import informe_cd as icd
+        d = os.path.dirname(os.path.abspath(parquet))
+        v26 = icd.preparar(pd.read_parquet(os.path.join(d, 'informe_cd_2026.parquet')))
+        v25 = icd.preparar(pd.read_parquet(os.path.join(d, 'informe_cd_2025.parquet')), anio_anterior=True)
+        t = pd.concat([v26, v25], ignore_index=True)
+        t['a'] = t['f'].dt.year; t['m'] = t['f'].dt.month
+        g = (t.groupby(['a','m','bloque','emp','G','L','linea','vtaemp'], dropna=False)['venta'].sum().round().astype('int64').reset_index())
+        mc = pd.read_csv(os.path.join(d, 'metas_cliente_2026.csv'), encoding='utf-8-sig')
+        ml = pd.read_csv(os.path.join(d, 'metas_linea_2026.csv'), encoding='utf-8-sig')
+        return {"hasta": f"{v26['f'].max():%Y-%m-%d}",
+                "rows": [[int(r.a), int(r.m), r.bloque, r.emp, str(r.G), str(r.L), str(r.linea), int(bool(r.vtaemp)), int(r.venta)] for r in g.itertuples()],
+                "mc": [[r.Linea, r.CategoriaGerencial, int(r.Mes), float(r.Meta)] for r in mc.itertuples()],
+                "ml": [[r.Empresa, r.Linea, int(r.Mes), float(r.Meta)] for r in ml.itertuples()]}
+    except Exception as e:
+        print('AVISO: sin datos del informe CD para el dashboard:', e)
+        return None
 
 def _leer_metas(parquet):
     """Metas por local (metas_local_2026.csv junto al parquet) para el panel editable. Tolerante a fallos."""
@@ -110,7 +131,7 @@ def construir(parquet, template, salida, clave=None):
     # El formato anterior (JSON con 1,7 millones de números) reventaba la memoria de
     # Safari en iPhone al hacer JSON.parse. Ahora las columnas viajan como typed arrays
     # dentro de un solo buffer: el navegador crea vistas sobre él sin copiar ni parsear.
-    header = {"n": len(c), "dims": {}, "cols": [], "meta": {"sub": sub, "metas": _leer_metas(parquet)},
+    header = {"n": len(c), "dims": {}, "cols": [], "meta": {"sub": sub, "metas": _leer_metas(parquet), "cd": _datos_cd(parquet)},
               "cmp": {"n": len(cmp_df), "dims": {}, "cols": []}}
     columnas = []                                   # (seccion, clave, dtype numpy, arreglo)
     for k in DIMS:

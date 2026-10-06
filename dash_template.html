@@ -248,6 +248,20 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
 .mt-btns{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
 .mt-btns button{background:var(--plane);border:1px solid var(--ring);border-radius:8px;padding:5px 12px;cursor:pointer}
 .mt-btns button:hover{background:var(--hover)}
+
+/* vista Informe CD */
+body.cdmode .cd-ocultar{display:none !important}
+body.cdmode .topbar .chips{display:none}
+#cd-view{padding:12px 20px}
+#cd-view .cd-ctrl{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+#cd-view select{background:var(--plane);border:1px solid var(--ring);border-radius:6px;padding:4px 8px;font-size:12px}
+#cd-tbl{border-collapse:collapse;width:100%;font-size:12px}
+#cd-tbl th,#cd-tbl td{padding:4px 8px;border-bottom:1px solid var(--ring);text-align:right;white-space:nowrap}
+#cd-tbl th:first-child,#cd-tbl td:first-child{text-align:left}
+#cd-tbl tr.sec td{font-weight:700;background:var(--plane);text-align:left}
+#cd-tbl tr.tot td{font-weight:700;background:var(--plane)}
+#cd-tbl .bar{display:inline-block;height:7px;border-radius:3px;background:var(--s1);vertical-align:middle;margin-left:6px}
+#cd-tbl .up{color:#1a7f37}#cd-tbl .mid{color:#9a6700}#cd-tbl .dn{color:#c0392b}
 </style>
 </head>
 <body>
@@ -290,6 +304,8 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
         <div class="emp-seg" id="empresa-sel" role="radiogroup" aria-label="Empresa"></div>
         <button type="button" class="btn" id="modo-loc" aria-pressed="false" style="margin-top:6px;width:100%"
           title="Solo locales, webs y marketplaces propios del negocio elegido">Locales y webs</button>
+        <button type="button" class="btn" id="modo-cd" aria-pressed="false" style="margin-top:6px;width:100%"
+          title="Niveles del informe de ventas desde CD: cliente, B2B/B2C, línea de producto">Informe CD</button>
       </div>
       <div class="side-actions">
         <button class="btn" id="reset">Limpiar todo</button>
@@ -346,6 +362,18 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
         <svg id="ch-cmp" height="340" role="img" aria-label="Comparativo entre años"></svg>
         <div class="tblwrap"><table id="cmp-tbl"><thead></thead><tbody></tbody></table></div>
         <p class="row-note" id="cmp-note"></p>
+      </div>
+      <div id="cd-view" hidden>
+        <div class="card">
+          <div class="hd"><div><h2>Informe de ventas desde CD · niveles</h2>
+            <p class="cap" id="cd-cap"></p></div></div>
+          <div class="cd-ctrl"><select id="cd-anio"></select><select id="cd-mes"></select><select id="cd-nivel">
+            <option value="cli">Por cliente</option><option value="lc">Por línea comercial (B2B / B2C)</option>
+            <option value="lin">Por línea de producto</option></select></div>
+          <div class="kpis-mini" id="cd-kpis"></div>
+          <div class="tblwrap"><table id="cd-tbl"><thead></thead><tbody></tbody></table></div>
+          <p class="row-note" id="cd-note"></p>
+        </div>
       </div>
       <div class="card" id="mt-card">
         <div class="hd"><div><h2>Metas por local</h2>
@@ -655,7 +683,7 @@ async function arrancar(bin){
     (c.k.length<=1? Dc.meas : Dc.codes)[c.k]=vista;
   }
   $('hdr-sub').textContent=D.meta.sub;
-  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls(); mtInit(); initModoLocales();
+  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls(); mtInit(); initModoLocales(); cdInit();
   $('loading').hidden=true; $('shell').hidden=false;
   render();
 }
@@ -738,6 +766,116 @@ function agg(m,keyFn){
 /* ---------- selector de empresa (mandatorio, siempre 1 seleccionada) ---------- */
 const EMPRESA_ORDEN=['EDUARDO DIB','DECOSTORE','DECOEXPRESS','INTEREMPRESAS'];
 const EMPRESA_DEFECTO='EDUARDO DIB';
+
+/* ---------- vista Informe CD (niveles del informe de ventas desde CD) ---------- */
+let modoCD=false;
+const CD_BLOQUES={'EDUARDO DIB':['DIB','FLOORING'],'DECOEXPRESS':['DECOEXPRESS']};
+const CD_MES=['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const cdFmt=v=>v==null?'':Math.round(v).toLocaleString('es-CL');
+function cdPct(a,b){return b>0?a/b:null}
+function cdSim(p){return p==null?'':(p>=1?'▲ ':p>=0.9?'► ':'▼ ')+(p*100).toFixed(1).replace('.',',')+'%'}
+function cdCls(p){return p==null?'':p>=1?'up':p>=0.9?'mid':'dn'}
+function cdInit(){
+  const C=D.meta.cd, b=$('modo-cd');
+  if(!C||!C.rows.length){b.hidden=true;return}
+  const anios=[...new Set(C.rows.map(r=>r[0]))].sort((x,y)=>y-x);
+  $('cd-anio').innerHTML=anios.map(a=>`<option>${a}</option>`).join('');
+  $('cd-mes').innerHTML=CD_MES.slice(1).map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
+  const h=C.hasta.split('-'); $('cd-anio').value=h[0]; $('cd-mes').value=+h[1];
+  ['cd-anio','cd-mes','cd-nivel'].forEach(id=>$(id).onchange=cdRender);
+  b.onclick=()=>{
+    modoCD=!modoCD; b.setAttribute('aria-pressed',modoCD); b.classList.toggle('active',modoCD);
+    document.body.classList.toggle('cdmode',modoCD); $('cd-view').hidden=!modoCD;
+    for(let el=$('cd-view'); el&&el.tagName!=='MAIN'; el=el.parentElement)
+      for(const sib of el.parentElement.children) if(sib!==el&&!sib.classList.contains('topbar')) sib.classList.toggle('cd-ocultar',modoCD);
+    if(modoCD){ if(modoLocales){ $('modo-loc').click(); }
+      const lab=D.dims['Empresa'][empActual]; if(!CD_BLOQUES[lab]) empActual=D.dims['Empresa'].indexOf(EMPRESA_DEFECTO); }
+    cdEmpresaBtns(); cdRender();
+  };
+}
+function cdEmpresaBtns(){
+  $('empresa-sel').querySelectorAll('.emp-btn').forEach(x=>{
+    const lab=D.dims['Empresa'][+x.dataset.i];
+    x.hidden = modoCD ? !CD_BLOQUES[lab] : (modoLocales && !NEG_DE_EMP[lab]);
+    x.classList.toggle('active',+x.dataset.i===empActual);
+  });
+}
+function cdRender(){
+  if(!modoCD) return;
+  const C=D.meta.cd, anio=+$('cd-anio').value, mes=+$('cd-mes').value, niv=$('cd-nivel').value;
+  const lab=D.dims['Empresa'][empActual], bloques=CD_BLOQUES[lab]||['DIB','FLOORING'];
+  const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+lab+' · Informe CD';
+  const parcial=(C.hasta.slice(0,7)===anio+'-'+String(mes).padStart(2,'0'));
+  const hd=C.hasta.split('-').reverse().join('-');
+  $('cd-cap').textContent='Cifras en pesos. '+(parcial?'Acumulado al '+hd+'; el año anterior es el mes completo. ':'Mes completo. ')+
+    'Solo ventas que entran al informe CD (sin interempresa ni documentos no-venta).';
+  const key=niv==='cli'? r=>r[4] : niv==='lc'? r=>r[5] : r=>r[6];
+  const mk=()=>new Map();
+  function sumar(a,m,excVE,bl){
+    const t=mk();
+    for(const r of C.rows){
+      if(r[0]!==a||r[1]!==m||r[2]!==bl) continue;
+      if(excVE && r[7]) continue;
+      t.set(key(r),(t.get(key(r))||0)+r[8]);
+    }
+    return t;
+  }
+  const metaDe=(bl,k)=>{
+    if(anio!==2026) return null;
+    if(niv==='cli'){ let x=0,n=0; for(const q of C.mc) if(q[0]===bl&&q[1]===k&&q[2]===mes){x+=q[3];n++} return n?x:null }
+    if(niv==='lin'){ const emp=bl==='DECOEXPRESS'?'DECOEXPRESS':'DIB'; let x=0,n=0;
+      for(const q of C.ml) if(q[0]===emp&&q[1]===k&&q[2]===mes){x+=q[3];n++} return n?x:null }
+    return null;
+  };
+  // en nivel línea de producto, FLOORING es una línea del bloque DIB (como en el informe)
+  const blqs = niv==='lin' ? [...new Set(bloques.map(b=>b==='FLOORING'?'DIB':b))] : bloques;
+  const filas=[]; let T={v:0,a:0,m:0,hm:false};
+  for(const bl of blqs){
+    const bs = niv==='lin' && bl==='DIB' ? bloques.filter(b=>b!=='DECOEXPRESS') : [bl];
+    const A=mk(), P=mk();
+    for(const b of bs){ for(const [k,v] of sumar(anio,mes,false,b)) A.set(k,(A.get(k)||0)+v);
+                        for(const [k,v] of sumar(anio-1,mes,niv==='cli',b)) P.set(k,(P.get(k)||0)+v); }
+    const ks=[...new Set([...A.keys(),...P.keys()])].sort((x,y)=>(A.get(y)||0)-(A.get(x)||0));
+    const tot={v:0,a:0,m:0,hm:false};
+    const sub=[];
+    for(const k of ks){
+      const v=A.get(k)||0, a=P.get(k)||0;
+      let m=null;
+      if(niv==='lin'){ m=metaDe(bl,k); }          // la meta por linea es por empresa (Flooring ya va dentro de DIB)
+      else for(const b of bs){const x=metaDe(b,k); if(x!=null) m=(m||0)+x;}
+      if(niv==='lc'){ sub.push({k,v,a:null,m}); tot.v+=v; tot.a=null; }
+      else { sub.push({k,v,a,m}); tot.v+=v; tot.a+=a; }
+       if(m!=null){tot.m+=m;tot.hm=true}
+    }
+    filas.push({sec:bl}); sub.forEach(x=>filas.push(x));
+    filas.push({tot:'Total '+bl,...tot, m:tot.hm?tot.m:null});
+    T.v+=tot.v; T.a=(T.a==null||tot.a==null)?null:T.a+tot.a; if(tot.hm){T.m+=tot.m;T.hm=true}
+  }
+  if(blqs.length>1) filas.push({tot:'Total '+lab,...T, m:T.hm?T.m:null});
+  const mx=Math.max(1,...filas.filter(f=>f.k).map(f=>f.v));
+  $('cd-tbl').tHead.innerHTML='<tr><th>'+(niv==='cli'?'Cliente / Segmento':niv==='lc'?'Línea comercial':'Línea de producto')+
+    '</th><th>Venta '+CD_MES[mes]+' '+anio+'</th><th>Igual mes '+(anio-1)+'</th><th>% vs año ant.</th><th>Meta mensual</th><th>% vs meta</th></tr>';
+  const tb=$('cd-tbl').tBodies[0]; tb.innerHTML='';
+  for(const f of filas){
+    const tr=document.createElement('tr');
+    if(f.sec){ tr.className='sec'; tr.innerHTML='<td colspan="6">'+f.sec+'</td>'; }
+    else{
+      const pa=cdPct(f.v,f.a), pm=(f.m&&f.m>=1e6)?cdPct(f.v,f.m):null;
+      tr.className=f.tot?'tot':'';
+      tr.innerHTML='<td>'+(f.tot||f.k)+'</td><td>'+cdFmt(f.v)+(f.k?'<span class="bar" style="width:'+Math.round(f.v/mx*70)+'px"></span>':'')+'</td><td>'+(f.a==null?'':cdFmt(f.a))+
+        '</td><td class="'+cdCls(pa)+'">'+(f.a?cdSim(pa):'')+'</td><td>'+(f.m!=null?cdFmt(f.m):'')+'</td><td class="'+cdCls(pm)+'">'+(pm!=null?cdSim(pm):(f.m!=null&&f.m<1e6?'s/meta':''))+'</td>';
+    }
+    tb.appendChild(tr);
+  }
+  const tp=T.a==null?null:cdPct(T.v,T.a), tm=T.hm&&T.m>=1e6?cdPct(T.v,T.m):null;
+  $('cd-kpis').innerHTML=[['Venta '+CD_MES[mes]+' '+anio,cdFmt(T.v),parcial?'acumulado al '+hd:'mes completo'],
+    ['Igual mes '+(anio-1),T.a==null?'-':cdFmt(T.a),T.a==null?'no comparable en este nivel':'mes completo'],['% vs año anterior',tp==null?'-':cdSim(tp),''],
+    ['% vs meta',tm==null?'-':cdSim(tm),T.hm?'meta '+cdFmt(T.m):'sin meta cargada']]
+    .map(k=>'<div class="kpi"><div class="lbl">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="note">'+k[2]+'</div></div>').join('');
+  $('cd-note').textContent=niv==='cli'?'Año anterior por cliente excluye la venta empresa de Flooring 2025 (criterio del informe).'
+    : niv==='lc'?'Sin meta ni año anterior por línea comercial: en 2025 no existía la separación B2B/B2C por cuenta analítica.'
+    : 'En esta vista Flooring va como línea del bloque DIB.';
+}
 /* ---------- modo "Locales y webs" ---------- */
 // En este modo el selector de empresa pasa a elegir el NEGOCIO (DIB / DECOSTORE / DECOEXPRESS),
 // derivado del canal: Vitacura y Falabella-marketplace viven bajo la empresa EDUARDO DIB pero son Decostore.
@@ -754,12 +892,14 @@ function aplicarEmpresa(i){
     x.hidden = modoLocales && !NEG_DE_EMP[D.dims['Empresa'][+x.dataset.i]];
   });
   const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+lab+(modoLocales?' · locales y webs':'');
+  if(modoCD){ cdEmpresaBtns(); cdRender(); return; }
   render();
 }
 function initModoLocales(){
   const b=$('modo-loc');
   if(!D.dims['Negocio']||!D.dims['Negocio'].includes('DIB')){b.hidden=true;return}
   b.onclick=()=>{
+    if(modoCD) $('modo-cd').click();
     modoLocales=!modoLocales; b.setAttribute('aria-pressed',modoLocales); b.classList.toggle('active',modoLocales);
     if(modoLocales && !NEG_DE_EMP[D.dims['Empresa'][empActual]]) empActual=D.dims['Empresa'].indexOf(EMPRESA_DEFECTO);
     const rk=$('dim-rank'); if(rk) rk.value=modoLocales?'PuntoVenta':'Canal_N3';
