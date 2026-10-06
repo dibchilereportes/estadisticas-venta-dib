@@ -5,10 +5,10 @@ import numpy as np, pandas as pd
 
 TOP_CLIENTES = 300
 DIMS = ['Empresa','Año','Mes','Canal_N1','Canal_N2','Canal_N3','DesgloseEntrega','local','LINEA_STD',
-        'CATEGORIA_STD','FAMILIA_STD','Descontinuado','TipoDoc','Cli','Vendedor']
+        'CATEGORIA_STD','FAMILIA_STD','Descontinuado','TipoDoc','Cli','Vendedor','Negocio','PuntoVenta']
 # Dimensiones de desglose disponibles en la vista Comparativo (Empresa/Año van aparte,
 # como filtro y como eje de comparacion respectivamente).
-COMP_DIMS = ['Canal_N1','Canal_N2','Canal_N3','local','LINEA_STD','CATEGORIA_STD','Vendedor','TipoDoc']
+COMP_DIMS = ['Canal_N1','Canal_N2','Canal_N3','local','PuntoVenta','LINEA_STD','CATEGORIA_STD','Vendedor','TipoDoc']
 
 def _codificar_dim(serie):
     """str(valor) + relleno de vacios + categorias ordenadas -> (dims, codigos, dtype)."""
@@ -20,6 +20,34 @@ def _codificar_dim(serie):
     cod = np.array([idx[x] for x in s])
     dt = 'u1' if len(cats) <= 255 else ('u2' if len(cats) <= 65535 else 'i4')
     return cats, cod.astype(dt), dt
+
+FUERA = '(fuera de locales)'
+MKP_DECO_N3 = {'Falabella','Paris','Ripley','Mercado Libre','Walmart'}
+
+def clasificar_puntos_venta(v):
+    """Negocio (DIB / DECOSTORE / DECOEXPRESS) y PuntoVenta (local, web o marketplace) por fila.
+    Las filas que no son local/web/marketplace propio quedan en '(fuera de locales)'.
+    Vitacura (Bazhars) esta contabilizado bajo la empresa EDUARDO DIB, y Falabella-marketplace
+    tambien: por eso el negocio se deriva del canal y no de la columna Empresa."""
+    emp = v['Empresa'].astype(str); n2 = v['Canal_N2'].astype(str); n3 = v['Canal_N3'].astype(str)
+    loc = v['local'].astype(str)
+    neg = pd.Series(FUERA, index=v.index); pv = pd.Series(FUERA, index=v.index)
+    def poner(mask, negocio, punto):
+        neg[mask] = negocio
+        pv[mask] = punto if isinstance(punto, str) else punto[mask]
+    # Locales
+    bz = n2.eq('Locales Bazhars') | (n2.eq('Locales DIB') & loc.str.contains('BUENAVENTURA'))
+    poner(bz, 'DECOSTORE', loc)
+    poner(n2.eq('Locales DIB') & ~bz, 'DIB', loc)
+    # Webs
+    poner(n2.eq('Web') & emp.eq('DECOSTORE'), 'DECOSTORE', 'Web Bazhars')
+    poner(n2.eq('Web') & emp.eq('EDUARDO DIB') & n3.isin(['Web','Web DIB']), 'DIB', 'Web DIB')
+    poner(n2.eq('Web') & emp.eq('DECOEXPRESS'), 'DECOEXPRESS', 'Web DECOEXPRESS')
+    # Marketplaces
+    mk_baz = n2.eq('Marketplace') & ((emp.eq('DECOSTORE')) | (emp.eq('EDUARDO DIB') & n3.isin(MKP_DECO_N3)))
+    poner(mk_baz, 'DECOSTORE', ('MKP ' + n3).where(n3.isin(MKP_DECO_N3), 'MKP Bazhars (sin detalle)'))
+    poner(n2.eq('Marketplace') & emp.eq('DECOEXPRESS'), 'DECOEXPRESS', 'Marketplaces DECOEXPRESS')
+    return neg, pv
 
 def _leer_metas(parquet):
     """Metas por local (metas_local_2026.csv junto al parquet) para el panel editable. Tolerante a fallos."""
@@ -43,6 +71,7 @@ def construir(parquet, template, salida, clave=None):
     v['Cli'] = np.where(v.ClienteNombre.isin(top), v.ClienteNombre.astype(str), 'OTROS CLIENTES')
     v['Descontinuado'] = np.where(v.Descontinuado, 'Descontinuado', 'Vigente')
     # Unidades: solo lineas donde Cantidad significa unidades (ver UnidadValida en el ETL).
+    v['Negocio'], v['PuntoVenta'] = clasificar_puntos_venta(v)
     v['Qval'] = np.where(v.UnidadValida, v.Cantidad, 0.0)
     v['L'] = 1
     c = (v.groupby(DIMS, observed=True, dropna=False)

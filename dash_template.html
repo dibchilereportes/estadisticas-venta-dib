@@ -288,6 +288,8 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
       <div class="emp-box">
         <label class="emp-lbl">Empresa</label>
         <div class="emp-seg" id="empresa-sel" role="radiogroup" aria-label="Empresa"></div>
+        <button type="button" class="btn" id="modo-loc" aria-pressed="false" style="margin-top:6px;width:100%"
+          title="Solo locales, webs y marketplaces propios del negocio elegido">Locales y webs</button>
       </div>
       <div class="side-actions">
         <button class="btn" id="reset">Limpiar todo</button>
@@ -560,7 +562,8 @@ const FILTROS=[
   ['DesgloseEntrega','Destino de entrega',0,0,1],
   ['LINEA_STD','Línea',0,1,1],['CATEGORIA_STD','Categoría',0,0,1],['FAMILIA_STD','Familia',0,0,1],
   ['local','Local',0,0,1],['Cli','Cliente',0,0,1],['Vendedor','Vendedor',0,0,1],
-  ['TipoDoc','Documento',0,0,1],['Descontinuado','Estado producto',0,0,1]
+  ['TipoDoc','Documento',0,0,1],['Descontinuado','Estado producto',0,0,1],
+  ['Negocio','Negocio (modo locales)',0,0,0],['PuntoVenta','Local / web / marketplace',0,0,1]
 ];
 const LAB=Object.fromEntries(FILTROS.map(f=>[f[0],f[1]]));
 let D=null,N=0,Dc=null,Nc=0;
@@ -652,7 +655,7 @@ async function arrancar(bin){
     (c.k.length<=1? Dc.meas : Dc.codes)[c.k]=vista;
   }
   $('hdr-sub').textContent=D.meta.sub;
-  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls(); mtInit();
+  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls(); mtInit(); initModoLocales();
   $('loading').hidden=true; $('shell').hidden=false;
   render();
 }
@@ -735,6 +738,34 @@ function agg(m,keyFn){
 /* ---------- selector de empresa (mandatorio, siempre 1 seleccionada) ---------- */
 const EMPRESA_ORDEN=['EDUARDO DIB','DECOSTORE','DECOEXPRESS','INTEREMPRESAS'];
 const EMPRESA_DEFECTO='EDUARDO DIB';
+/* ---------- modo "Locales y webs" ---------- */
+// En este modo el selector de empresa pasa a elegir el NEGOCIO (DIB / DECOSTORE / DECOEXPRESS),
+// derivado del canal: Vitacura y Falabella-marketplace viven bajo la empresa EDUARDO DIB pero son Decostore.
+const NEG_DE_EMP={'EDUARDO DIB':'DIB','DECOSTORE':'DECOSTORE','DECOEXPRESS':'DECOEXPRESS'};
+let modoLocales=false, empActual=null;
+function aplicarEmpresa(i){
+  empActual=i; const lab=D.dims['Empresa'][i];
+  sel['Empresa'].clear(); if(sel['Negocio']) sel['Negocio'].clear();
+  if(modoLocales && NEG_DE_EMP[lab]) sel['Negocio'].add(D.dims['Negocio'].indexOf(NEG_DE_EMP[lab]));
+  else sel['Empresa'].add(i);
+  if(UI['Negocio']) UI['Negocio'].opts.forEach(o=>{o.cb.checked=sel['Negocio'].has(o.code)});
+  $('empresa-sel').querySelectorAll('.emp-btn').forEach(x=>{
+    x.classList.toggle('active',+x.dataset.i===i);
+    x.hidden = modoLocales && !NEG_DE_EMP[D.dims['Empresa'][+x.dataset.i]];
+  });
+  const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+lab+(modoLocales?' · locales y webs':'');
+  render();
+}
+function initModoLocales(){
+  const b=$('modo-loc');
+  if(!D.dims['Negocio']||!D.dims['Negocio'].includes('DIB')){b.hidden=true;return}
+  b.onclick=()=>{
+    modoLocales=!modoLocales; b.setAttribute('aria-pressed',modoLocales); b.classList.toggle('active',modoLocales);
+    if(modoLocales && !NEG_DE_EMP[D.dims['Empresa'][empActual]]) empActual=D.dims['Empresa'].indexOf(EMPRESA_DEFECTO);
+    const rk=$('dim-rank'); if(rk) rk.value=modoLocales?'PuntoVenta':'Canal_N3';
+    aplicarEmpresa(empActual);
+  };
+}
 function buildEmpresaSelector(){
   const k='Empresa', vals=D.dims[k];
   sel[k]=new Set();
@@ -749,15 +780,10 @@ function buildEmpresaSelector(){
     const b=document.createElement('button');
     b.type='button'; b.className='emp-btn'; b.textContent=vals[i];
     b.setAttribute('role','radio'); b.dataset.i=i;
-    b.onclick=()=>{
-      sel[k].clear(); sel[k].add(i);
-      cont.querySelectorAll('.emp-btn').forEach(x=>x.classList.toggle('active',+x.dataset.i===i));
-      const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+vals[i];
-      render();
-    };
+    b.onclick=()=>aplicarEmpresa(i);
     cont.appendChild(b);
   });
-  sel[k].add(defecto);
+  sel[k].add(defecto); empActual=defecto;
   cont.querySelectorAll('.emp-btn').forEach(x=>x.classList.toggle('active',+x.dataset.i===defecto));
   const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+vals[defecto];
 }
@@ -809,7 +835,7 @@ function buildSidebar(){
     cont.appendChild(g);
   });
   $('reset').onclick=()=>{
-    for(const k in sel){ if(k==='Empresa') continue; sel[k].clear(); UI[k].opts.forEach(o=>o.cb.checked=false);}
+    for(const k in sel){ if(k==='Empresa'||(modoLocales&&k==='Negocio')) continue; sel[k].clear(); UI[k].opts.forEach(o=>o.cb.checked=false);}
     render();
   };
   $('theme').onclick=()=>{
@@ -828,7 +854,7 @@ function buildRankSelect(){
 }
 
 /* ---------- comparativo entre años ---------- */
-const COMP_DIMS=['Canal_N1','Canal_N2','Canal_N3','local','LINEA_STD','CATEGORIA_STD','Vendedor','TipoDoc'];
+const COMP_DIMS=['Canal_N1','Canal_N2','Canal_N3','local','PuntoVenta','LINEA_STD','CATEGORIA_STD','Vendedor','TipoDoc'];
 const CMP_MET=[['V','Venta (M$)'],['C','Costo (M$)'],['P','Margen (%)'],['Q','Unidades'],
                ['N','Clientes distintos'],['M','Documentos distintos']];
 const CMP_FIELD={V:'v',C:'c',Q:'q',N:'n',M:'m'};
@@ -871,8 +897,14 @@ function maskYear(yearCode){
   return m;
 }
 function cmpChart(){
-  if(!Dc || !sel['Empresa'] || !sel['Empresa'].size) return;
+  if(!Dc) return;
   const dimName=$('cmp-dim').value, metrica=$('cmp-metrica').value;
+  if(!modoLocales && (!sel['Empresa'] || !sel['Empresa'].size)) return;
+  if(modoLocales && !(metrica==='V'||metrica==='C'||metrica==='Q'||metrica==='P')){
+    $('cmp-note').textContent='Clientes y documentos distintos no están disponibles en el modo Locales y webs.';
+    $('cmp-kpis').innerHTML=''; $('cmp-lg').innerHTML=''; $('ch-cmp').innerHTML='';
+    $('cmp-tbl').tHead.innerHTML=''; $('cmp-tbl').tBodies[0].innerHTML=''; return;
+  }
   const aLab=$('cmp-a').value, bLab=$('cmp-b').value;
   const usaCuboPrincipal = metrica==='V'||metrica==='C'||metrica==='Q'||metrica==='P';
   let filas, totA, totB;
