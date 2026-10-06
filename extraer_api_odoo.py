@@ -325,6 +325,16 @@ def main():
         return
     nuevo = estandarizar(df_api)
 
+    # Clasificacion gerencial (informe diario CD/DIB/DECOEXPRESS). Si la matriz no esta o
+    # falla, se avisa y se sigue: no debe romper la actualizacion diaria del dashboard.
+    try:
+        from clasificacion_gerencial import clasificar
+        nuevo = nuevo.join(clasificar(df_api))
+        print('Clasificacion gerencial: ' +
+              nuevo['EntraInforme_CD'].value_counts().to_dict().__str__())
+    except Exception as e:
+        print(f'AVISO: no se pudo aplicar la clasificacion gerencial ({e!r}); se continua sin ella.')
+
     hist = pd.read_parquet(HIST_PARQUET)
     hist = hist[hist['Fecha'] < pd.Timestamp(DESDE)]
 

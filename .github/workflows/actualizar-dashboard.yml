@@ -31,6 +31,7 @@ jobs:
           mkdir -p datos
           cp datos-repo/datos/ventas_bdd.parquet datos/ventas_bdd.parquet
           cp datos-repo/datos/cubo_mes.parquet datos/cubo_mes.parquet
+          cp datos-repo/datos/clasificacion_gerencial.csv clasificacion_gerencial.csv || echo "AVISO: sin matriz de clasificacion"
 
       - name: Set up Python
         uses: actions/setup-python@v5
