@@ -33,6 +33,7 @@ jobs:
           cp datos-repo/datos/cubo_mes.parquet datos/cubo_mes.parquet
           cp datos-repo/datos/clasificacion_gerencial.csv clasificacion_gerencial.csv || echo "AVISO: sin matriz de clasificacion"
           cp datos-repo/datos/informe_cd_2025.parquet datos-repo/datos/metas_cliente_2026.csv datos-repo/datos/metas_linea_2026.csv datos/ || echo "AVISO: faltan datos del informe CD"
+          cp datos-repo/datos/metas_local_2026.csv datos-repo/datos/historico_local_2025.csv datos/ || echo "AVISO: faltan metas/historico de locales"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -56,6 +57,13 @@ jobs:
           AYER=$(TZ=America/Santiago date -d 'yesterday' +%F)
           mkdir -p informes
           python informe_cd.py "$AYER" "informes/Informe_ventas_CD_${AYER}.xlsx" --datos datos
+
+      - name: Generar informe locales/webs/marketplaces (ayer, hora Chile) - NO envia correo
+        continue-on-error: true
+        run: |
+          AYER=$(TZ=America/Santiago date -d 'yesterday' +%F)
+          mkdir -p informes
+          python informe_locales.py "$AYER" "informes/Informe_locales_${AYER}.xlsx" --datos datos
 
       - name: Reconstruir dashboard
         env:
