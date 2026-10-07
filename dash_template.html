@@ -250,7 +250,8 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
 .mt-btns button:hover{background:var(--hover)}
 
 /* vista Informe CD */
-body.cdmode .cd-ocultar{display:none !important}
+.fgroup[data-cd],.fgroup[data-oculto]{display:none}
+body.cdmode .fgroup[data-cd]{display:block}
 body.cdmode .topbar .chips{display:none}
 #cd-view{padding:12px 20px}
 #cd-view .cd-ctrl{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
@@ -591,8 +592,12 @@ const FILTROS=[
   ['LINEA_STD','Línea',0,1,1],['CATEGORIA_STD','Categoría',0,0,1],['FAMILIA_STD','Familia',0,0,1],
   ['local','Local',0,0,1],['Cli','Cliente',0,0,1],['Vendedor','Vendedor',0,0,1],
   ['TipoDoc','Documento',0,0,1],['Descontinuado','Estado producto',0,0,1],
-  ['Negocio','Negocio (modo locales)',0,0,0],['PuntoVenta','Local / web / marketplace',0,0,1]
+  ['Negocio','Negocio (modo locales)',0,0,0],['PuntoVenta','Local / web / marketplace',0,0,1],
+  ['CliGer','Nivel gerencial (cliente)',0,0,1],['Segmento','B2B / B2C',0,0,1],['LineaCom','Línea comercial',0,0,1],
+  ['BloqueInf','Bloque informe CD',0,0,0],['EntraCD','Entra al informe CD',0,0,0]
 ];
+const FILTROS_CD=['CliGer','Segmento','LineaCom','BloqueInf'];      // visibles solo en modo Informe CD
+const FILTROS_OCULTOS=['EntraCD'];                                  // los maneja el modo, no el usuario
 const LAB=Object.fromEntries(FILTROS.map(f=>[f[0],f[1]]));
 let D=null,N=0,Dc=null,Nc=0;
 const sel={};          // dim -> Set de códigos seleccionados
@@ -783,14 +788,14 @@ function cdInit(){
   $('cd-mes').innerHTML=CD_MES.slice(1).map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
   const h=C.hasta.split('-'); $('cd-anio').value=h[0]; $('cd-mes').value=+h[1];
   ['cd-anio','cd-mes','cd-nivel'].forEach(id=>$(id).onchange=cdRender);
+  const cv=$('cd-view'); cv.parentElement.insertBefore(cv,cv.parentElement.firstChild);   // la tabla de niveles va arriba
   b.onclick=()=>{
     modoCD=!modoCD; b.setAttribute('aria-pressed',modoCD); b.classList.toggle('active',modoCD);
     document.body.classList.toggle('cdmode',modoCD); $('cd-view').hidden=!modoCD;
-    for(let el=$('cd-view'); el&&el.tagName!=='MAIN'; el=el.parentElement)
-      for(const sib of el.parentElement.children) if(sib!==el&&!sib.classList.contains('topbar')) sib.classList.toggle('cd-ocultar',modoCD);
-    if(modoCD){ if(modoLocales){ $('modo-loc').click(); }
-      const lab=D.dims['Empresa'][empActual]; if(!CD_BLOQUES[lab]) empActual=D.dims['Empresa'].indexOf(EMPRESA_DEFECTO); }
-    cdEmpresaBtns(); cdRender();
+    if(modoCD && modoLocales){ modoLocales=false; $('modo-loc').setAttribute('aria-pressed','false'); $('modo-loc').classList.remove('active'); }
+    if(modoCD && !CD_BLOQUES[D.dims['Empresa'][empActual]]) empActual=D.dims['Empresa'].indexOf(EMPRESA_DEFECTO);
+    const rk=$('dim-rank'); if(rk) rk.value=modoCD?'CliGer':'Canal_N3';
+    aplicarEmpresa(empActual);
   };
 }
 function cdEmpresaBtns(){
@@ -808,7 +813,7 @@ function cdRender(){
   const parcial=(C.hasta.slice(0,7)===anio+'-'+String(mes).padStart(2,'0'));
   const hd=C.hasta.split('-').reverse().join('-');
   $('cd-cap').textContent='Cifras en pesos. '+(parcial?'Acumulado al '+hd+'; el año anterior es el mes completo. ':'Mes completo. ')+
-    'Solo ventas que entran al informe CD (sin interempresa ni documentos no-venta).';
+    'Solo ventas que entran al informe CD (sin interempresa ni documentos no-venta). Esta tabla usa sus propios datos mensuales; los gráficos de abajo responden a los filtros del panel (nivel gerencial, B2B/B2C, línea comercial, línea).';
   const key=niv==='cli'? r=>r[4] : niv==='lc'? r=>r[5] : r=>r[6];
   const mk=()=>new Map();
   function sumar(a,m,excVE,bl){
@@ -883,23 +888,28 @@ const NEG_DE_EMP={'EDUARDO DIB':'DIB','DECOSTORE':'DECOSTORE','DECOEXPRESS':'DEC
 let modoLocales=false, empActual=null;
 function aplicarEmpresa(i){
   empActual=i; const lab=D.dims['Empresa'][i];
-  sel['Empresa'].clear(); if(sel['Negocio']) sel['Negocio'].clear();
-  if(modoLocales && NEG_DE_EMP[lab]) sel['Negocio'].add(D.dims['Negocio'].indexOf(NEG_DE_EMP[lab]));
+  sel['Empresa'].clear();
+  ['Negocio','BloqueInf','EntraCD'].forEach(k=>{ if(sel[k]) sel[k].clear(); });
+  if(modoCD && CD_BLOQUES[lab]){
+    CD_BLOQUES[lab].forEach(b=>{const c=D.dims['BloqueInf'].indexOf(b); if(c>=0) sel['BloqueInf'].add(c)});
+    const si=D.dims['EntraCD'].indexOf('SI'); if(si>=0) sel['EntraCD'].add(si);
+  } else if(modoLocales && NEG_DE_EMP[lab]) sel['Negocio'].add(D.dims['Negocio'].indexOf(NEG_DE_EMP[lab]));
   else sel['Empresa'].add(i);
-  if(UI['Negocio']) UI['Negocio'].opts.forEach(o=>{o.cb.checked=sel['Negocio'].has(o.code)});
+  ['Negocio','BloqueInf','EntraCD'].forEach(k=>{ if(UI[k]) UI[k].opts.forEach(o=>{o.cb.checked=sel[k].has(o.code)}); });
   $('empresa-sel').querySelectorAll('.emp-btn').forEach(x=>{
+    const l=D.dims['Empresa'][+x.dataset.i];
     x.classList.toggle('active',+x.dataset.i===i);
-    x.hidden = modoLocales && !NEG_DE_EMP[D.dims['Empresa'][+x.dataset.i]];
+    x.hidden = modoCD ? !CD_BLOQUES[l] : (modoLocales && !NEG_DE_EMP[l]);
   });
-  const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+lab+(modoLocales?' · locales y webs':'');
-  if(modoCD){ cdEmpresaBtns(); cdRender(); return; }
+  const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+lab+(modoLocales?' · locales y webs':modoCD?' · Informe CD':'');
+  if(modoCD) cdRender();
   render();
 }
 function initModoLocales(){
   const b=$('modo-loc');
   if(!D.dims['Negocio']||!D.dims['Negocio'].includes('DIB')){b.hidden=true;return}
   b.onclick=()=>{
-    if(modoCD) $('modo-cd').click();
+    if(modoCD){ modoCD=false; $('modo-cd').setAttribute('aria-pressed','false'); $('modo-cd').classList.remove('active'); document.body.classList.remove('cdmode'); $('cd-view').hidden=true; }
     modoLocales=!modoLocales; b.setAttribute('aria-pressed',modoLocales); b.classList.toggle('active',modoLocales);
     if(modoLocales && !NEG_DE_EMP[D.dims['Empresa'][empActual]]) empActual=D.dims['Empresa'].indexOf(EMPRESA_DEFECTO);
     const rk=$('dim-rank'); if(rk) rk.value=modoLocales?'PuntoVenta':'Canal_N3';
@@ -942,6 +952,8 @@ function buildSidebar(){
     sel[k]=new Set();
     const g=document.createElement('div');
     g.className='fgroup'+(abierto?' open':'');
+    if(FILTROS_CD.includes(k)) g.dataset.cd='1';
+    if(FILTROS_OCULTOS.includes(k)) g.dataset.oculto='1';
     g.innerHTML=`<button class="fhead" type="button"><span class="car">›</span>${lab}
         <span class="badge" hidden></span></button>
       <div class="fbody">
@@ -975,7 +987,7 @@ function buildSidebar(){
     cont.appendChild(g);
   });
   $('reset').onclick=()=>{
-    for(const k in sel){ if(k==='Empresa'||(modoLocales&&k==='Negocio')) continue; sel[k].clear(); UI[k].opts.forEach(o=>o.cb.checked=false);}
+    for(const k in sel){ if(k==='Empresa'||(modoLocales&&k==='Negocio')||(modoCD&&(k==='BloqueInf'||k==='EntraCD'))) continue; sel[k].clear(); UI[k].opts.forEach(o=>o.cb.checked=false);}
     render();
   };
   $('theme').onclick=()=>{
@@ -994,7 +1006,7 @@ function buildRankSelect(){
 }
 
 /* ---------- comparativo entre años ---------- */
-const COMP_DIMS=['Canal_N1','Canal_N2','Canal_N3','local','PuntoVenta','LINEA_STD','CATEGORIA_STD','Vendedor','TipoDoc'];
+const COMP_DIMS=['Canal_N1','Canal_N2','Canal_N3','local','PuntoVenta','CliGer','LineaCom','LINEA_STD','CATEGORIA_STD','Vendedor','TipoDoc'];
 const CMP_MET=[['V','Venta (M$)'],['C','Costo (M$)'],['P','Margen (%)'],['Q','Unidades'],
                ['N','Clientes distintos'],['M','Documentos distintos']];
 const CMP_FIELD={V:'v',C:'c',Q:'q',N:'n',M:'m'};
@@ -1039,9 +1051,9 @@ function maskYear(yearCode){
 function cmpChart(){
   if(!Dc) return;
   const dimName=$('cmp-dim').value, metrica=$('cmp-metrica').value;
-  if(!modoLocales && (!sel['Empresa'] || !sel['Empresa'].size)) return;
-  if(modoLocales && !(metrica==='V'||metrica==='C'||metrica==='Q'||metrica==='P')){
-    $('cmp-note').textContent='Clientes y documentos distintos no están disponibles en el modo Locales y webs.';
+  if(!modoLocales && !modoCD && (!sel['Empresa'] || !sel['Empresa'].size)) return;
+  if((modoLocales||modoCD) && !(metrica==='V'||metrica==='C'||metrica==='Q'||metrica==='P')){
+    $('cmp-note').textContent='Clientes y documentos distintos no están disponibles en los modos Locales y webs / Informe CD.';
     $('cmp-kpis').innerHTML=''; $('cmp-lg').innerHTML=''; $('ch-cmp').innerHTML='';
     $('cmp-tbl').tHead.innerHTML=''; $('cmp-tbl').tBodies[0].innerHTML=''; return;
   }

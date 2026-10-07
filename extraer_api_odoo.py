@@ -331,6 +331,9 @@ def main():
         from clasificacion_gerencial import clasificar
         cl = clasificar(df_api)
         nuevo = nuevo.join(cl)
+        # clasificacion por fila para el cubo del dashboard (nivel gerencial, linea comercial, bloque)
+        import informe_cd
+        nuevo = nuevo.join(informe_cd.clasificar_filas(df_api))
         # tabla diaria agregada en PESOS (llave de clasificacion) para el informe CD diario
         base = df_api[['x_date', 'x_customer', 'x_branch', 'x_canal', 'x_cuenta_analytica', 'x_linea',
                        'x_tipo_dte', 'x_total_venta', 'x_margen_contribucion']].join(cl)
@@ -348,6 +351,21 @@ def main():
 
     hist = pd.read_parquet(HIST_PARQUET)
     hist = hist[hist['Fecha'] < pd.Timestamp(DESDE)]
+
+    # Clasificacion por fila del historico (2025 a DESDE): sale de datos/clasif_filas_hist.parquet,
+    # generado una vez con el workflow manual 'clasificar-filas-historicas'. Si no existe, se sigue.
+    try:
+        nuevas_cols = ['CliGer', 'LineaCom', 'BloqueInf', 'EntraCD', 'VtaEmp']
+        ck = pd.read_parquet('datos/clasif_filas_hist.parquet')
+        claves = ['Fecha', 'Factura', 'Codigo', 'Tipo']
+        ck = ck.drop_duplicates(claves)[claves + nuevas_cols]
+        n0 = len(hist)
+        hist = hist.drop(columns=[c for c in nuevas_cols if c in hist.columns]).merge(ck, on=claves, how='left')
+        assert len(hist) == n0, 'el cruce duplico filas del historico'
+        cobertura = hist.loc[hist['Fecha'] >= '2025-01-01', 'CliGer'].notna().mean()
+        print(f'Clasificacion por fila del historico: cobertura 2025+ = {cobertura:.1%}')
+    except Exception as e:
+        print(f'AVISO: sin clasificacion por fila del historico ({e!r}); se continua sin ella.')
 
     columnas = [c for c in hist.columns if c in nuevo.columns] + \
                [c for c in nuevo.columns if c not in hist.columns]

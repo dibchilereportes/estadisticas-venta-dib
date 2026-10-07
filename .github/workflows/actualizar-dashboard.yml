@@ -34,6 +34,7 @@ jobs:
           cp datos-repo/datos/clasificacion_gerencial.csv clasificacion_gerencial.csv || echo "AVISO: sin matriz de clasificacion"
           cp datos-repo/datos/informe_cd_2025.parquet datos-repo/datos/metas_cliente_2026.csv datos-repo/datos/metas_linea_2026.csv datos/ || echo "AVISO: faltan datos del informe CD"
           cp datos-repo/datos/metas_local_2026.csv datos-repo/datos/historico_local_2025.csv datos/ || echo "AVISO: faltan metas/historico de locales"
+          cp datos-repo/datos/clasif_filas_hist.parquet datos/ || echo "AVISO: sin clasificacion por fila del historico"
 
       - name: Set up Python
         uses: actions/setup-python@v5

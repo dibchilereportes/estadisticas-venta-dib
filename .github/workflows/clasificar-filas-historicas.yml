@@ -1,0 +1,50 @@
+name: Clasificar filas historicas (solo lectura)
+
+# Solo manual. Trae 2025 a julio-2026 de Odoo, clasifica cada linea y guarda
+# datos/clasif_filas_hist.parquet en el repo PRIVADO. No toca ventas_bdd.parquet ni el dashboard.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  clasificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout repo de datos (privado)
+        uses: actions/checkout@v4
+        with:
+          repository: dibchilereportes/estadisticas-venta-dib-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: datos-repo
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install pandas numpy pyarrow openpyxl holidays
+
+      - name: Preparar datos
+        run: |
+          mkdir -p datos
+          cp datos-repo/datos/clasificacion_gerencial.csv clasificacion_gerencial.csv
+          cp datos-repo/datos/ventas_bdd.parquet datos/ventas_bdd.parquet
+
+      - name: Extraer y clasificar
+        env:
+          ODOO_URL: ${{ secrets.ODOO_URL }}
+          ODOO_DB: ${{ secrets.ODOO_DB }}
+          ODOO_USER: ${{ secrets.ODOO_USER }}
+          ODOO_KEY: ${{ secrets.ODOO_KEY }}
+        run: python clasificar_filas_hist.py
+
+      - name: Guardar en repo privado
+        run: |
+          cp datos/clasif_filas_hist.parquet datos-repo/datos/clasif_filas_hist.parquet
+          cd datos-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add datos/clasif_filas_hist.parquet
+          git diff --cached --quiet || git commit -m "Clasificacion por fila del historico $(date +%d-%m-%Y)"
+          git push

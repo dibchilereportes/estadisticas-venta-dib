@@ -38,8 +38,8 @@ def _norm(s):
     return unicodedata.normalize('NFKD', str(s)).encode('ascii', 'ignore').decode().upper().strip()
 
 
-def preparar(df, anio_anterior=False):
-    """Deja una tabla lista: f, G (grupo), L (linea comercial), bloque, linea, venta, emp."""
+def _preparar_full(df, anio_anterior=False):
+    """Tabla completa (todas las filas) con f, G (grupo), L (linea comercial), bloque, linea, emp, E, vtaemp."""
     df = df.copy()
     if 'ClasifGerencial' not in df.columns:
         from clasificacion_gerencial import clasificar
@@ -98,7 +98,22 @@ def preparar(df, anio_anterior=False):
                             np.where(es_dexp, 'DECOEXPRESS', 'DIB'))
     df['E'] = E
     df['vtaemp'] = vtaemp
+    return df
+
+
+def preparar(df, anio_anterior=False):
+    """Deja una tabla lista (solo filas que entran al informe): f, G, L, bloque, linea, emp, venta, vtaemp."""
+    df = _preparar_full(df, anio_anterior)
     return df[df['E']][['f', 'G', 'L', 'bloque', 'linea', 'emp', 'venta', 'vtaemp']]
+
+
+def clasificar_filas(df, anio_anterior=False):
+    """Clasificacion por fila (mismo indice que df) para el cubo del dashboard:
+    CliGer (nivel gerencial), LineaCom, Bloque, EntraCD ('SI'/'NO'), VtaEmp ('SI'/'NO')."""
+    f = _preparar_full(df, anio_anterior)
+    return pd.DataFrame({'CliGer': f['G'], 'LineaCom': f['L'], 'BloqueInf': f['bloque'],
+                         'EntraCD': np.where(f['E'], 'SI', 'NO'),
+                         'VtaEmp': np.where(f['vtaemp'], 'SI', 'NO')}, index=df.index)
 
 
 # ---------------------------------------------------------------- calendario
