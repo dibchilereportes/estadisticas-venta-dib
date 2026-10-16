@@ -7,7 +7,13 @@ on:
                             # Actions en :00 -- igual puede atrasarse 1-5h, pero al correr
                             # de madrugada (despues del cierre de cajas) el resultado queda
                             # listo mas temprano y el dia anterior sale mas completo.
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      enviar:
+        description: 'Envio de correo (FALSE = no envia, TEST = solo a ti, TRUE = todos)'
+        type: choice
+        options: ['FALSE', 'TEST', 'TRUE']
+        default: 'FALSE'
 
 permissions:
   contents: write
@@ -91,3 +97,18 @@ jobs:
           git add datos informes
           git diff --cached --quiet || git commit -m "Actualiza datos $(date +%d-%m-%Y)"
           git push
+
+      - name: Enviar informes por correo (apagado por defecto)
+        continue-on-error: true
+        env:
+          # Manual: lo elegido en el run. Programado: variable del repo ENVIAR_CORREO (si no existe, FALSE).
+          ENVIAR_CORREO: ${{ github.event.inputs.enviar || vars.ENVIAR_CORREO || 'FALSE' }}
+          ODOO_URL: ${{ secrets.ODOO_URL }}
+          ODOO_DB: ${{ secrets.ODOO_DB }}
+          ODOO_USER: ${{ secrets.ODOO_USER }}
+          ODOO_KEY: ${{ secrets.ODOO_KEY }}
+          CORREO_REMITENTE: ${{ vars.CORREO_REMITENTE }}
+          CORREO_TEST: ${{ vars.CORREO_TEST || 'fgonzalez@dib.cl' }}
+        run: |
+          AYER=$(TZ=America/Santiago date -d 'yesterday' +%F)
+          python enviar_informes.py "$AYER" --destinatarios datos-repo/datos/destinatarios_informe.txt
