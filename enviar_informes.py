@@ -1,11 +1,11 @@
 """Envia por correo los informes diarios generados por la plataforma.
 Uso: python enviar_informes.py AAAA-MM-DD --destinatarios archivo.txt
 Modo (variable de entorno ENVIAR_CORREO): FALSE (default, no envia) | TEST (solo CORREO_TEST) | TRUE (todos).
-SMTP por variables de entorno: SMTP_HOST, SMTP_PORT (587), SMTP_USER, SMTP_PASS, CORREO_REMITENTE, CORREO_TEST.
+Envia con el servidor de correo saliente de Odoo (mail.mail), usando los mismos secrets ODOO_*.
+Extra: CORREO_REMITENTE (opcional; si falta usa el remitente por defecto de Odoo), CORREO_TEST (solo modo TEST).
 """
-import argparse, glob, os, smtplib, sys
+import argparse, base64, glob, os, sys, xmlrpc.client
 from datetime import datetime
-from email.message import EmailMessage
 
 
 def main():
@@ -23,7 +23,7 @@ def main():
     if not adj:
         print('Sin informes para %s; no se envia' % a.fecha); return 1
 
-    remit = os.environ['CORREO_REMITENTE']
+    remit = os.environ.get('CORREO_REMITENTE', '')
     if modo == 'TEST':
         dest = [os.environ['CORREO_TEST']]
     else:
@@ -31,23 +31,36 @@ def main():
                 if l.strip() and not l.startswith('#')]
     fstr = datetime.strptime(a.fecha, '%Y-%m-%d').strftime('%d-%m-%Y')
 
-    m = EmailMessage()
-    m['From'] = remit
-    m['To'] = ', '.join(dest)
-    m['Subject'] = ('[TEST] ' if modo == 'TEST' else '') + 'Informe Control Ventas ' + fstr
-    m.set_content('Buenos dias:\n\nAdjunto informes Control Ventas del dia %s.\n\n'
-                  'Atte,\nControl de Gestion\n\n---\nCorreo enviado automaticamente. '
-                  'Por favor no responder a este mensaje.' % fstr)
+    asunto = ('[TEST] ' if modo == 'TEST' else '') + 'Informe Control Ventas ' + fstr
+    cuerpo = ('<p>Buenos dias:</p><p>Adjunto informes Control Ventas del dia %s.</p>'
+              '<p>Atte,<br>Control de Gestion</p><hr><small>Correo enviado automaticamente. '
+              'Por favor no responder a este mensaje.</small>' % fstr)
+
+    url, db = os.environ['ODOO_URL'].rstrip('/'), os.environ['ODOO_DB']
+    user, key = os.environ['ODOO_USER'], os.environ['ODOO_KEY']
+    uid = xmlrpc.client.ServerProxy(url + '/xmlrpc/2/common').authenticate(db, user, key, {})
+    ex = xmlrpc.client.ServerProxy(url + '/xmlrpc/2/object', allow_none=True).execute_kw
+
+    att = []
     for f in adj:
         with open(f, 'rb') as fh:
-            m.add_attachment(fh.read(), maintype='application',
-                             subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                             filename=os.path.basename(f))
-    with smtplib.SMTP(os.environ['SMTP_HOST'], int(os.environ.get('SMTP_PORT', '587'))) as s:
-        s.starttls()
-        s.login(os.environ['SMTP_USER'], os.environ['SMTP_PASS'])
-        s.send_message(m)
-    print('Correo %s enviado a %d destinatario(s): %s' % (modo, len(dest), m['Subject']))
+            att.append(ex(db, uid, key, 'ir.attachment', 'create', [{
+                'name': os.path.basename(f), 'datas': base64.b64encode(fh.read()).decode(),
+                'res_model': 'mail.mail', 'res_id': 0,
+                'mimetype': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}]))
+    vals = {'subject': asunto, 'body_html': cuerpo, 'email_to': ', '.join(dest),
+            'attachment_ids': [(6, 0, att)], 'auto_delete': False}
+    if remit:
+        vals['email_from'] = remit
+    mid = ex(db, uid, key, 'mail.mail', 'create', [vals])
+    try:
+        ex(db, uid, key, 'mail.mail', 'send', [[mid]])
+    except Exception as e:     # si el envio inmediato falla, queda en la cola de Odoo
+        print('Aviso: envio inmediato fallo (%s); queda en cola de Odoo' % str(e)[:200])
+    est = ex(db, uid, key, 'mail.mail', 'read', [[mid]], {'fields': ['state', 'failure_reason']})[0]
+    print('Correo %s -> %d destinatario(s), estado Odoo: %s %s' % (modo, len(dest), est['state'], est['failure_reason'] or ''))
+    if est['state'] == 'exception':
+        return 1
     return 0
 
 
