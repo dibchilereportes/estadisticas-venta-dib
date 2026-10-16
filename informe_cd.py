@@ -48,7 +48,7 @@ def _preparar_full(df, anio_anterior=False):
     cli = df['x_customer'].map(_norm)
     can = df['x_canal'].map(_norm)
     df['linea'] = df['x_linea'].map(_norm).replace('', 'SIN LINEA')
-    es_dexp = df['LineaComercial'].isin(['VENTAS X MAYOR DEXP', 'M PLACE DEXP'])
+    es_dexp = df['LineaComercial'].isin(['VENTAS X MAYOR DEXP', 'M PLACE DEXP', 'WEB DEXP'])
     df['emp'] = np.where(es_dexp, 'DECOEXPRESS', 'DIB')
     G = df['ClasifGerencial'].copy()
     L = df['LineaComercial'].copy()
@@ -311,7 +311,7 @@ def construir(calc):
               pct_meta(tb[1] + tc[1], tb[2] + tc[2]), ''))
     b.append(('SEC', 'DECOEXPRESS'))
     for et, lc, cat in (('DECOEXPRESS B2B', 'VENTAS X MAYOR DEXP', 'DECOEXPRESS B2B'),
-                        ('DECOEXPRESS B2C', 'M PLACE DEXP', 'DECOEXPRESS B2C')):
+                        ('DECOEXPRESS B2C', ['M PLACE DEXP', 'WEB DEXP'], 'DECOEXPRESS B2C')):
         d = c.dia(L=lc); a = c.acum(L=lc); m = c.meta_cliente('DECOEXPRESS', None, cat)
         b.append(('ROW', et, et, d, a, m, '', pct_meta(a, m), ''))
     d = c.dia(emp='DECOEXPRESS'); a = c.acum(emp='DECOEXPRESS'); m = c.meta_cliente('DECOEXPRESS')

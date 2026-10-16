@@ -10,7 +10,7 @@ al peso contra el informe de ventas del 30-09-2026:
   2. Documentos 'Liquidacion...' y 'Operaciones Visual' -> excluidos (no son venta:
      comisiones de marketplace / ajustes internos).
   3. DECOEXPRESS: se clasifica solo por cuenta analitica (VENTAS X MAYOR DEXP = B2B,
-     M PLACE DEXP = B2C).
+     M PLACE DEXP y WEB DEXP = B2C).
   4. Marketplace: siempre B2C, aunque la cuenta analitica diga B2B.
   5. Cuentas de la matriz sin combinacion en la matriz -> 'SIN CLASIFICAR' (no entra al
      informe, pero queda visible para auditar).
@@ -26,7 +26,8 @@ import numpy as np
 import pandas as pd
 
 RUTA_MATRIZ = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'clasificacion_gerencial.csv')
-DEXP = {'VENTAS X MAYOR DEXP': 'DECOEXPRESS B2B', 'M PLACE DEXP': 'DECOEXPRESS B2C'}
+DEXP = {'VENTAS X MAYOR DEXP': 'DECOEXPRESS B2B', 'M PLACE DEXP': 'DECOEXPRESS B2C',
+        'WEB DEXP': 'DECOEXPRESS B2C'}   # DECOEXPRESS no tiene tiendas: su web va en B2C
 GRUPO_MKT = 'MARKET PLACE (HITES-LA POLAR-ML)'
 SALIDA = ['ClasifGerencial', 'LineaComercial', 'BloqueInforme', 'EntraInforme_CD', 'MotivoExclusion']
 
