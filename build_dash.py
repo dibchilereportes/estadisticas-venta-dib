@@ -60,10 +60,19 @@ def _datos_cd(parquet):
         t = pd.concat([v26, v25], ignore_index=True)
         t['a'] = t['f'].dt.year; t['m'] = t['f'].dt.month
         g = (t.groupby(['a','m','bloque','emp','G','L','linea','vtaemp'], dropna=False)['venta'].sum().round().astype('int64').reset_index())
+        # Venta del ultimo dia con registro de cada mes 2026 (misma estructura que rows)
+        t26 = v26.copy(); t26['a'] = t26['f'].dt.year; t26['m'] = t26['f'].dt.month
+        t26['d'] = t26['f'].dt.normalize()
+        ult = t26.groupby('m')['d'].transform('max')
+        gd = (t26[t26['d'] == ult].groupby(['a','m','bloque','emp','G','L','linea','vtaemp'], dropna=False)['venta']
+              .sum().round().astype('int64').reset_index())
+        diaf = {int(m): f"{x:%Y-%m-%d}" for m, x in t26.groupby('m')['d'].max().items()}
         mc = pd.read_csv(os.path.join(d, 'metas_cliente_2026.csv'), encoding='utf-8-sig')
         ml = pd.read_csv(os.path.join(d, 'metas_linea_2026.csv'), encoding='utf-8-sig')
         return {"hasta": f"{v26['f'].max():%Y-%m-%d}",
                 "rows": [[int(r.a), int(r.m), r.bloque, r.emp, str(r.G), str(r.L), str(r.linea), int(bool(r.vtaemp)), int(r.venta)] for r in g.itertuples()],
+                "dia": [[int(r.a), int(r.m), r.bloque, r.emp, str(r.G), str(r.L), str(r.linea), int(bool(r.vtaemp)), int(r.venta)] for r in gd.itertuples()],
+                "diaf": diaf,
                 "mc": [[r.Linea, r.CategoriaGerencial, int(r.Mes), float(r.Meta)] for r in mc.itertuples()],
                 "ml": [[r.Empresa, r.Linea, int(r.Mes), float(r.Meta)] for r in ml.itertuples()]}
     except Exception as e:

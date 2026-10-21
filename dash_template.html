@@ -816,9 +816,9 @@ function cdRender(){
     'Solo ventas que entran al informe CD (sin interempresa ni documentos no-venta). Esta tabla usa sus propios datos mensuales; los gráficos de abajo responden a los filtros del panel (nivel gerencial, B2B/B2C, línea comercial, línea).';
   const key=niv==='cli'? r=>r[4] : niv==='lc'? r=>r[5] : r=>r[6];
   const mk=()=>new Map();
-  function sumar(a,m,excVE,bl){
+  function sumar(a,m,excVE,bl,src){
     const t=mk();
-    for(const r of C.rows){
+    for(const r of (src||C.rows)){
       if(r[0]!==a||r[1]!==m||r[2]!==bl) continue;
       if(excVE && r[7]) continue;
       t.set(key(r),(t.get(key(r))||0)+r[8]);
@@ -834,46 +834,50 @@ function cdRender(){
   };
   // en nivel línea de producto, FLOORING es una línea del bloque DIB (como en el informe)
   const blqs = niv==='lin' ? [...new Set(bloques.map(b=>b==='FLOORING'?'DIB':b))] : bloques;
-  const filas=[]; let T={v:0,a:0,m:0,hm:false};
+  const fdia=(anio===2026&&C.diaf&&C.diaf[mes])?C.diaf[mes]:null;      // ultimo dia con registro del mes
+  const hdia=fdia?fdia.split('-').reverse().slice(0,2).join('-'):'';
+  const filas=[]; let T={d:0,v:0,a:0,m:0,hm:false};
   for(const bl of blqs){
     const bs = niv==='lin' && bl==='DIB' ? bloques.filter(b=>b!=='DECOEXPRESS') : [bl];
-    const A=mk(), P=mk();
+    const A=mk(), P=mk(), Dd=mk();
     for(const b of bs){ for(const [k,v] of sumar(anio,mes,false,b)) A.set(k,(A.get(k)||0)+v);
+                        if(fdia) for(const [k,v] of sumar(anio,mes,false,b,C.dia)) Dd.set(k,(Dd.get(k)||0)+v);
                         for(const [k,v] of sumar(anio-1,mes,niv==='cli',b)) P.set(k,(P.get(k)||0)+v); }
     const ks=[...new Set([...A.keys(),...P.keys()])].sort((x,y)=>(A.get(y)||0)-(A.get(x)||0));
-    const tot={v:0,a:0,m:0,hm:false};
+    const tot={d:0,v:0,a:0,m:0,hm:false};
     const sub=[];
     for(const k of ks){
-      const v=A.get(k)||0, a=P.get(k)||0;
+      const v=A.get(k)||0, a=P.get(k)||0, dd=Dd.get(k)||0;
       let m=null;
       if(niv==='lin'){ m=metaDe(bl,k); }          // la meta por linea es por empresa (Flooring ya va dentro de DIB)
       else for(const b of bs){const x=metaDe(b,k); if(x!=null) m=(m||0)+x;}
-      if(niv==='lc'){ sub.push({k,v,a:null,m}); tot.v+=v; tot.a=null; }
-      else { sub.push({k,v,a,m}); tot.v+=v; tot.a+=a; }
+      if(niv==='lc'){ sub.push({k,d:dd,v,a:null,m}); tot.v+=v; tot.d+=dd; tot.a=null; }
+      else { sub.push({k,d:dd,v,a,m}); tot.v+=v; tot.d+=dd; tot.a+=a; }
        if(m!=null){tot.m+=m;tot.hm=true}
     }
     filas.push({sec:bl}); sub.forEach(x=>filas.push(x));
     filas.push({tot:'Total '+bl,...tot, m:tot.hm?tot.m:null});
-    T.v+=tot.v; T.a=(T.a==null||tot.a==null)?null:T.a+tot.a; if(tot.hm){T.m+=tot.m;T.hm=true}
+    T.v+=tot.v; T.d+=tot.d; T.a=(T.a==null||tot.a==null)?null:T.a+tot.a; if(tot.hm){T.m+=tot.m;T.hm=true}
   }
   if(blqs.length>1) filas.push({tot:'Total '+lab,...T, m:T.hm?T.m:null});
   const mx=Math.max(1,...filas.filter(f=>f.k).map(f=>f.v));
   $('cd-tbl').tHead.innerHTML='<tr><th>'+(niv==='cli'?'Cliente / Segmento':niv==='lc'?'Línea comercial':'Línea de producto')+
-    '</th><th>Venta '+CD_MES[mes]+' '+anio+'</th><th>Igual mes '+(anio-1)+'</th><th>% vs año ant.</th><th>Meta mensual</th><th>% vs meta</th></tr>';
+    '</th><th>Venta Día'+(hdia?' ('+hdia+')':'')+'</th><th>Venta Acumulada</th><th>Meta Mensual</th><th>Igual Mes Año Ant.</th><th>% vs Meta</th><th>% vs Año Ant.</th></tr>';
   const tb=$('cd-tbl').tBodies[0]; tb.innerHTML='';
   for(const f of filas){
     const tr=document.createElement('tr');
-    if(f.sec){ tr.className='sec'; tr.innerHTML='<td colspan="6">'+f.sec+'</td>'; }
+    if(f.sec){ tr.className='sec'; tr.innerHTML='<td colspan="7">'+f.sec+'</td>'; }
     else{
       const pa=cdPct(f.v,f.a), pm=(f.m&&f.m>=1e6)?cdPct(f.v,f.m):null;
       tr.className=f.tot?'tot':'';
-      tr.innerHTML='<td>'+(f.tot||f.k)+'</td><td>'+cdFmt(f.v)+(f.k?'<span class="bar" style="width:'+Math.round(f.v/mx*70)+'px"></span>':'')+'</td><td>'+(f.a==null?'':cdFmt(f.a))+
-        '</td><td class="'+cdCls(pa)+'">'+(f.a?cdSim(pa):'')+'</td><td>'+(f.m!=null?cdFmt(f.m):'')+'</td><td class="'+cdCls(pm)+'">'+(pm!=null?cdSim(pm):(f.m!=null&&f.m<1e6?'s/meta':''))+'</td>';
+      tr.innerHTML='<td>'+(f.tot||f.k)+'</td><td>'+(fdia?cdFmt(f.d):'')+'</td><td>'+cdFmt(f.v)+(f.k?'<span class="bar" style="width:'+Math.round(f.v/mx*70)+'px"></span>':'')+
+        '</td><td>'+(f.m!=null?cdFmt(f.m):'')+'</td><td>'+(f.a==null?'':cdFmt(f.a))+
+        '</td><td class="'+cdCls(pm)+'">'+(pm!=null?cdSim(pm):(f.m!=null&&f.m<1e6?'s/meta':''))+'</td><td class="'+cdCls(pa)+'">'+(f.a?cdSim(pa):'')+'</td>';
     }
     tb.appendChild(tr);
   }
   const tp=T.a==null?null:cdPct(T.v,T.a), tm=T.hm&&T.m>=1e6?cdPct(T.v,T.m):null;
-  $('cd-kpis').innerHTML=[['Venta '+CD_MES[mes]+' '+anio,cdFmt(T.v),parcial?'acumulado al '+hd:'mes completo'],
+  $('cd-kpis').innerHTML=[...(fdia?[['Venta día '+hdia,cdFmt(T.d),'último día con registro']]:[]),['Venta '+CD_MES[mes]+' '+anio,cdFmt(T.v),parcial?'acumulado al '+hd:'mes completo'],
     ['Igual mes '+(anio-1),T.a==null?'-':cdFmt(T.a),T.a==null?'no comparable en este nivel':'mes completo'],['% vs año anterior',tp==null?'-':cdSim(tp),''],
     ['% vs meta',tm==null?'-':cdSim(tm),T.hm?'meta '+cdFmt(T.m):'sin meta cargada']]
     .map(k=>'<div class="kpi"><div class="lbl">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="note">'+k[2]+'</div></div>').join('');
