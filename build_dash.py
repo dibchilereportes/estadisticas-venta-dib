@@ -56,6 +56,10 @@ def _datos_cd(parquet):
         import informe_cd as icd
         d = os.path.dirname(os.path.abspath(parquet))
         v26 = icd.preparar(pd.read_parquet(os.path.join(d, 'informe_cd_2026.parquet')))
+        # El informe CD siempre cierra al dia anterior (hora Chile): el dia en curso llega parcial
+        # si el workflow se corre durante el dia, y no debe mezclarse en 'Venta Dia' ni en el acumulado.
+        hoy_cl = pd.Timestamp.now(tz='America/Santiago').tz_localize(None).normalize()
+        v26 = v26[v26['f'] < hoy_cl]
         v25 = icd.preparar(pd.read_parquet(os.path.join(d, 'informe_cd_2025.parquet')), anio_anterior=True)
         t = pd.concat([v26, v25], ignore_index=True)
         t['a'] = t['f'].dt.year; t['m'] = t['f'].dt.month
