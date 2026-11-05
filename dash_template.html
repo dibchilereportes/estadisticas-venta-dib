@@ -393,6 +393,7 @@ body.cdmode .topbar .chips{display:none}
           <div class="hd"><div><h2>Tiendas × Subfamilia</h2><p class="cap" id="sf-cap"></p></div></div>
           <div class="sf-ctrl"><label>Subfamilias <select id="sf-n"><option>10</option><option selected>15</option><option>25</option><option>40</option></select></label>
             <label>Mostrar <select id="sf-mode"><option value="v">Venta M$</option><option value="mix">% de la venta de la tienda</option></select></label>
+            <label>Color <select id="sf-heat"><option value="row">Peso de la subfamilia dentro de cada tienda</option><option value="col">Tienda más fuerte en cada subfamilia</option></select></label>
             <label><input type="checkbox" id="sf-np"> Ocultar descontinuado, fletes y comisiones</label></div>
           <div class="sf-wrap"><table id="sf-tbl"></table></div>
         </div>
@@ -800,7 +801,7 @@ const SF_NOPROD=new Set(['DESCONTINUADO','FLETE LOCAL','COMISION','FACTURACION M
 function sfInit(){
   if(!Ds) return;
   const v=$('sf-view'); v.parentElement.insertBefore(v,v.parentElement.firstChild);
-  ['sf-n','sf-mode','sf-np'].forEach(id=>$(id).onchange=sfRender);
+  ['sf-n','sf-mode','sf-np','sf-heat'].forEach(id=>$(id).onchange=sfRender);
 }
 function sfRender(){
   const box=$('sf-view'); if(!box) return;
@@ -826,16 +827,19 @@ function sfRender(){
   const mix=$('sf-mode').value==='mix';
   const val=(r,cs)=>{ let t=0; for(const c of cs) t+=cell.get(r*NS+c)||0; return t };
   const disp=(v,rt)=>mix? (rt?((v/rt)*100):0) : v;
-  // maximo por columna (para el color) en la unidad mostrada
-  const colMax=top.map(c=>Math.max(1e-9,...rows.map(r=>disp(cell.get(r*NS+c)||0,rowT.get(r)))));
+  // maximo por tienda (para el color): lo mas oscuro de cada fila es lo que mas pesa en esa tienda
+  const rowMax=new Map(rows.map(r=>[r,Math.max(1e-9,...top.map(c=>cell.get(r*NS+c)||0))]));
+  // maximo por subfamilia (modo "tienda mas fuerte"): lo mas oscuro de cada columna es la tienda lider
+  const colMax=new Map(top.map(c=>[c,Math.max(1e-9,...rows.map(r=>cell.get(r*NS+c)||0))]));
+  const porFila=$('sf-heat').value==='row';
   const fmt=x=>mix? (Math.abs(x)<0.05?'':NF1.format(x)+' %') : (Math.round(x)===0?'':fmtM(x));
-  const heat=(x,mx)=> x>0? ' style="background:rgba(37,99,235,'+(Math.min(1,x/mx)*0.55).toFixed(3)+')"' : '';
+  const heat=(v,mx)=> v>0? ' style="background:rgba(37,99,235,'+(Math.sqrt(Math.min(1,v/mx))*0.6).toFixed(3)+')"' : '';
   let h='<thead><tr><th>Tienda</th>'+top.map(c=>'<th class="sfh" title="'+dm['SUBFAMILIA_STD'][c]+'"><span>'+dm['SUBFAMILIA_STD'][c]+'</span></th>').join('')+
     (resto.length?'<th class="sfh"><span>Otras ('+resto.length+')</span></th>':'')+'<th class="sfh"><span>Total</span></th></tr></thead><tbody>';
   for(const r of rows){
     const rt=rowT.get(r), nom=dm['PuntoVenta'][r];
     h+='<tr><td>'+nom+'</td>'+top.map((c,j)=>{const v=cell.get(r*NS+c)||0, d=disp(v,rt);
-      return '<td'+heat(d,colMax[j])+' title="'+nom+' · '+dm['SUBFAMILIA_STD'][c]+': M$ '+fmtM(v)+(rt?' ('+NF1.format(v/rt*100)+' %)':'')+'">'+fmt(d)+'</td>'}).join('')+
+      return '<td'+heat(v,porFila?rowMax.get(r):colMax.get(c))+' title="'+nom+' · '+dm['SUBFAMILIA_STD'][c]+': M$ '+fmtM(v)+(rt?' ('+NF1.format(v/rt*100)+' %)':'')+'">'+fmt(d)+'</td>'}).join('')+
       (resto.length?'<td>'+fmt(disp(val(r,resto),rt))+'</td>':'')+'<td class="tot">'+(mix?'100 %':fmtM(rt))+'</td></tr>';
   }
   const gt=[...rowT.values()].reduce((a,b)=>a+b,0);
@@ -844,7 +848,7 @@ function sfRender(){
     '<td>'+(mix?'100 %':fmtM(gt))+'</td></tr></tbody>';
   $('sf-tbl').innerHTML=h;
   const neg=fN?[...fN].join(' / '):'todos los negocios';
-  $('sf-cap').textContent=neg+' · cifras en M$ (miles de pesos). Responde a los filtros de Año, Mes, Negocio y Local del panel; el color compara cada subfamilia entre tiendas.';
+  $('sf-cap').textContent=neg+' · cifras en M$ (miles de pesos). Responde a los filtros de Año, Mes, Negocio y Local del panel; '+(porFila?'en cada tienda, el color más oscuro es la subfamilia que más pesa y el más claro la que menos.':'en cada subfamilia, el color más oscuro es la tienda más fuerte y el más claro la de menor venta.');
 }
 
 /* ---------- vista Informe CD (niveles del informe de ventas desde CD) ---------- */
