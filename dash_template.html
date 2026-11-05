@@ -253,6 +253,18 @@ th.tot,td.tot{border-left:1px solid var(--grid)}
 .fgroup[data-cd],.fgroup[data-oculto]{display:none}
 body.cdmode .fgroup[data-cd]{display:block}
 body.cdmode .topbar .chips{display:none}
+#sf-view{padding:12px 20px}
+#sf-view .sf-ctrl{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 10px;font-size:12px;align-items:center}
+#sf-view select{background:var(--plane);border:1px solid var(--ring);border-radius:6px;padding:4px 8px;font-size:12px}
+#sf-view .sf-wrap{overflow:auto;max-height:70vh}
+#sf-tbl{border-collapse:separate;border-spacing:0;font-size:12px}
+#sf-tbl th,#sf-tbl td{padding:4px 8px;border-bottom:1px solid var(--ring);text-align:right;white-space:nowrap}
+#sf-tbl thead th{position:sticky;top:0;background:var(--plane);vertical-align:bottom;z-index:2}
+#sf-tbl th.sfh{height:150px;padding:6px 2px}
+#sf-tbl th.sfh span{writing-mode:vertical-rl;transform:rotate(180deg);display:inline-block;max-height:140px;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+#sf-tbl th:first-child,#sf-tbl td:first-child{text-align:left;position:sticky;left:0;background:var(--plane);z-index:1}
+#sf-tbl thead th:first-child{z-index:3}
+#sf-tbl tr.tot td,#sf-tbl td.tot{font-weight:700;background:var(--plane)}
 #cd-view{padding:12px 20px}
 #cd-view .cd-ctrl{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
 #cd-view select{background:var(--plane);border:1px solid var(--ring);border-radius:6px;padding:4px 8px;font-size:12px}
@@ -374,6 +386,15 @@ body.cdmode .topbar .chips{display:none}
           <div class="kpis-mini" id="cd-kpis"></div>
           <div class="tblwrap"><table id="cd-tbl"><thead></thead><tbody></tbody></table></div>
           <p class="row-note" id="cd-note"></p>
+        </div>
+      </div>
+      <div id="sf-view" hidden>
+        <div class="card">
+          <div class="hd"><div><h2>Tiendas × Subfamilia</h2><p class="cap" id="sf-cap"></p></div></div>
+          <div class="sf-ctrl"><label>Subfamilias <select id="sf-n"><option>10</option><option selected>15</option><option>25</option><option>40</option></select></label>
+            <label>Mostrar <select id="sf-mode"><option value="v">Venta M$</option><option value="mix">% de la venta de la tienda</option></select></label>
+            <label><input type="checkbox" id="sf-np"> Ocultar descontinuado, fletes y comisiones</label></div>
+          <div class="sf-wrap"><table id="sf-tbl"></table></div>
         </div>
       </div>
       <div class="card" id="mt-card">
@@ -599,7 +620,7 @@ const FILTROS=[
 const FILTROS_CD=['CliGer','Segmento','LineaCom','BloqueInf'];      // visibles solo en modo Informe CD
 const FILTROS_OCULTOS=['EntraCD'];                                  // los maneja el modo, no el usuario
 const LAB=Object.fromEntries(FILTROS.map(f=>[f[0],f[1]]));
-let D=null,N=0,Dc=null,Nc=0;
+let D=null,N=0,Dc=null,Nc=0,Ds=null;
 const sel={};          // dim -> Set de códigos seleccionados
 const UI={};           // dim -> {opts:[{el,cb,vl,code,txt}], badge, orden}
 
@@ -687,8 +708,10 @@ async function arrancar(bin){
     const vista=new TIPO[c.t](buf, base+c.off, Nc);
     (c.k.length<=1? Dc.meas : Dc.codes)[c.k]=vista;
   }
+  if(H.sf){ Ds={dims:H.sf.dims, codes:{}, meas:{}, n:H.sf.n};
+    for(const c of H.sf.cols){ const vista=new TIPO[c.t](buf, base+c.off, H.sf.n); (c.k.length<=1? Ds.meas : Ds.codes)[c.k]=vista; } }
   $('hdr-sub').textContent=D.meta.sub;
-  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls(); mtInit(); initModoLocales(); cdInit();
+  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls(); mtInit(); initModoLocales(); cdInit(); sfInit();
   $('loading').hidden=true; $('shell').hidden=false;
   render();
 }
@@ -771,6 +794,58 @@ function agg(m,keyFn){
 /* ---------- selector de empresa (mandatorio, siempre 1 seleccionada) ---------- */
 const EMPRESA_ORDEN=['EDUARDO DIB','DECOSTORE','DECOEXPRESS','INTEREMPRESAS'];
 const EMPRESA_DEFECTO='EDUARDO DIB';
+
+/* ---------- vista Tiendas x Subfamilia (modo Locales) ---------- */
+const SF_NOPROD=new Set(['DESCONTINUADO','FLETE LOCAL','COMISION','FACTURACION MASIVA']);
+function sfInit(){
+  if(!Ds) return;
+  const v=$('sf-view'); v.parentElement.insertBefore(v,v.parentElement.firstChild);
+  ['sf-n','sf-mode','sf-np'].forEach(id=>$(id).onchange=sfRender);
+}
+function sfRender(){
+  const box=$('sf-view'); if(!box) return;
+  if(!Ds||!modoLocales){ box.hidden=true; return }
+  box.hidden=false;
+  // filtros del panel -> etiquetas (el cubo de esta vista tiene sus propios codigos)
+  const lab=(dim)=>{ const s=sel[dim]; return (s&&s.size)? new Set([...s].map(c=>D.dims[dim][c])) : null };
+  const fA=lab('Año'), fM=lab('Mes'), fN=lab('Negocio'), fP=lab('PuntoVenta');
+  const cod=Ds.codes, dm=Ds.dims, V=Ds.meas.V, np=$('sf-np').checked;
+  const okA=dm['Año'].map(x=>!fA||fA.has(x)), okM=dm['Mes'].map(x=>!fM||fM.has(x)),
+        okN=dm['Negocio'].map(x=>!fN||fN.has(x)), okP=dm['PuntoVenta'].map(x=>!fP||fP.has(x)),
+        okS=dm['SUBFAMILIA_STD'].map(x=>!(np&&SF_NOPROD.has(x)));
+  const cell=new Map(), rowT=new Map(), colT=new Map(); const NS=dm['SUBFAMILIA_STD'].length;
+  for(let i=0;i<Ds.n;i++){
+    if(!okA[cod['Año'][i]]||!okM[cod['Mes'][i]]||!okN[cod['Negocio'][i]]||!okP[cod['PuntoVenta'][i]]||!okS[cod['SUBFAMILIA_STD'][i]]) continue;
+    const r=cod['PuntoVenta'][i], c=cod['SUBFAMILIA_STD'][i], v=V[i], k=r*NS+c;
+    cell.set(k,(cell.get(k)||0)+v); rowT.set(r,(rowT.get(r)||0)+v); colT.set(c,(colT.get(c)||0)+v);
+  }
+  const rows=[...rowT.entries()].sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+  const nTop=+$('sf-n').value;
+  const cols=[...colT.entries()].sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+  const top=cols.slice(0,nTop), resto=cols.slice(nTop);
+  const mix=$('sf-mode').value==='mix';
+  const val=(r,cs)=>{ let t=0; for(const c of cs) t+=cell.get(r*NS+c)||0; return t };
+  const disp=(v,rt)=>mix? (rt?((v/rt)*100):0) : v;
+  // maximo por columna (para el color) en la unidad mostrada
+  const colMax=top.map(c=>Math.max(1e-9,...rows.map(r=>disp(cell.get(r*NS+c)||0,rowT.get(r)))));
+  const fmt=x=>mix? (Math.abs(x)<0.05?'':NF1.format(x)+' %') : (Math.round(x)===0?'':fmtM(x));
+  const heat=(x,mx)=> x>0? ' style="background:rgba(37,99,235,'+(Math.min(1,x/mx)*0.55).toFixed(3)+')"' : '';
+  let h='<thead><tr><th>Tienda</th>'+top.map(c=>'<th class="sfh" title="'+dm['SUBFAMILIA_STD'][c]+'"><span>'+dm['SUBFAMILIA_STD'][c]+'</span></th>').join('')+
+    (resto.length?'<th class="sfh"><span>Otras ('+resto.length+')</span></th>':'')+'<th class="sfh"><span>Total</span></th></tr></thead><tbody>';
+  for(const r of rows){
+    const rt=rowT.get(r), nom=dm['PuntoVenta'][r];
+    h+='<tr><td>'+nom+'</td>'+top.map((c,j)=>{const v=cell.get(r*NS+c)||0, d=disp(v,rt);
+      return '<td'+heat(d,colMax[j])+' title="'+nom+' · '+dm['SUBFAMILIA_STD'][c]+': M$ '+fmtM(v)+(rt?' ('+NF1.format(v/rt*100)+' %)':'')+'">'+fmt(d)+'</td>'}).join('')+
+      (resto.length?'<td>'+fmt(disp(val(r,resto),rt))+'</td>':'')+'<td class="tot">'+(mix?'100 %':fmtM(rt))+'</td></tr>';
+  }
+  const gt=[...rowT.values()].reduce((a,b)=>a+b,0);
+  h+='<tr class="tot"><td>Total</td>'+top.map(c=>'<td>'+(mix?(gt?NF1.format((colT.get(c)||0)/gt*100)+' %':''):fmtM(colT.get(c)||0))+'</td>').join('')+
+    (resto.length?'<td>'+(mix?(gt?NF1.format(resto.reduce((a,c)=>a+colT.get(c),0)/gt*100)+' %':''):fmtM(resto.reduce((a,c)=>a+colT.get(c),0)))+'</td>':'')+
+    '<td>'+(mix?'100 %':fmtM(gt))+'</td></tr></tbody>';
+  $('sf-tbl').innerHTML=h;
+  const neg=fN?[...fN].join(' / '):'todos los negocios';
+  $('sf-cap').textContent=neg+' · cifras en M$ (miles de pesos). Responde a los filtros de Año, Mes, Negocio y Local del panel; el color compara cada subfamilia entre tiendas.';
+}
 
 /* ---------- vista Informe CD (niveles del informe de ventas desde CD) ---------- */
 let modoCD=false;
@@ -1182,7 +1257,7 @@ function render(){
     ['Unidades',fmtM(t.q),'excluye servicios y descuentos'],
     ['Líneas de venta',fmtM(t.d),'registros en la selección']
   ].map(([l,v,n])=>`<div class="kpi"><div class="lab">${l}</div><div class="val">${v}</div><div class="note">${n}</div></div>`).join('');
-  lineChart(m); rankChart(m); stackChart(m); vendorQuickView(m); cmpChart();
+  lineChart(m); rankChart(m); stackChart(m); vendorQuickView(m); cmpChart(); sfRender();
 }
 
 /* ---------- vista rápida por vendedor ---------- */

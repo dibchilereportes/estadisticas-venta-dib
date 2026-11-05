@@ -146,6 +146,12 @@ def construir(parquet, template, salida, clave=None):
     piezas.append(tot)
     cmp_df = pd.concat(piezas, ignore_index=True)
 
+    # ---- cubo tiendas x subfamilia (vista "Tiendas x Subfamilia" del modo Locales) ------
+    # Aparte del cubo principal: agregar SUBFAMILIA_STD (1.300+ valores) a DIMS lo multiplicaria.
+    w = v[v['Negocio'] != FUERA]
+    sf_df = (w.groupby(['Año','Mes','Negocio','PuntoVenta','SUBFAMILIA_STD'], observed=True, dropna=False)
+               .agg(V=('Venta','sum')).reset_index())
+
     # ---- payload binario columnar --------------------------------------------
     # El formato anterior (JSON con 1,7 millones de números) reventaba la memoria de
     # Safari en iPhone al hacer JSON.parse. Ahora las columnas viajan como typed arrays
@@ -171,6 +177,13 @@ def construir(parquet, template, salida, clave=None):
     for m, dt in [("V", 'f8'), ("C", 'f8'), ("Q", 'f4'), ("N", 'i4'), ("M", 'i4')]:
         columnas.append(('cmp', m, dt, cmp_df[m].to_numpy().astype(dt)))
 
+    header["sf"] = {"n": len(sf_df), "dims": {}, "cols": []}
+    for k in ['Año','Mes','Negocio','PuntoVenta','SUBFAMILIA_STD']:
+        cats, cod, dt = _codificar_dim(sf_df[k])
+        header["sf"]["dims"][k] = cats
+        columnas.append(('sf', k, dt, cod))
+    columnas.append(('sf', 'V', 'f8', sf_df['V'].to_numpy().astype('f8')))
+
     ORDEN = {'f8': 0, 'i4': 1, 'f4': 1, 'u2': 2, 'u1': 3}   # mayor alineación primero
     columnas.sort(key=lambda t: ORDEN[t[2]])
     cuerpo, off = [], 0
@@ -179,7 +192,7 @@ def construir(parquet, template, salida, clave=None):
         pad = (-off) % ancho                        # cada vista debe quedar alineada
         if pad:
             cuerpo.append(b'\x00' * pad); off += pad
-        destino = header["cols"] if seccion == 'main' else header["cmp"]["cols"]
+        destino = header["cols"] if seccion == 'main' else header[seccion]["cols"]
         destino.append({"k": k, "t": dt, "off": off})
         cuerpo.append(arr.tobytes()); off += arr.nbytes
 
