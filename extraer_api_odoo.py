@@ -390,3 +390,10 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # Diagnostico de etiquetas (solo lectura): corre solo si existe el archivo marcador; borrarlo para apagarlo.
+    if os.path.exists('diagnostico_etiquetas.activar'):
+        try:
+            import runpy
+            runpy.run_path('diagnostico_etiquetas.py')
+        except BaseException as e:
+            print('AVISO diagnostico de etiquetas:', repr(e))
