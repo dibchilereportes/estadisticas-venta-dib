@@ -54,3 +54,27 @@ try:
     print(f'{len(filas)} facturas de muestra | enlazadas a pedido: {ok} | con etiqueta: {con_tag}')
     print('ejemplos (folio, cuenta analitica, pedido, ids de etiqueta):', detalles)
 except Exception as e: print('ERROR', str(e)[:300])
+
+paso('4. La vista YA trae x_etiquetas_texto y x_sale_order_name: cobertura desde 2026-08-01')
+try:
+    from collections import Counter
+    dom = [('x_date', '>=', '2026-08-01')]
+    n = call(VISTA, 'search_count', dom)
+    tot = Counter(); cnt = Counter(); porcta = {}; con_so = 0; filas_n = 0
+    for off in range(0, n, 5000):
+        for r in call(VISTA, 'search_read', dom, fields=['x_etiquetas_texto', 'x_sale_order_name', 'x_cuenta_analytica', 'x_total_venta'], offset=off, limit=5000):
+            filas_n += 1
+            et = r['x_etiquetas_texto'] or ''; et = et if et and et is not False else ''
+            so = r['x_sale_order_name'] or ''
+            con_so += 1 if so and so is not False else 0
+            cta = r['x_cuenta_analytica'] or '(sin cuenta)'
+            v = r['x_total_venta'] or 0
+            cnt[et or '(vacio)'] += 1; tot[et or '(vacio)'] += v
+            porcta.setdefault(cta, Counter())['con' if et else 'sin'] += 1
+    print(f'{filas_n} filas | con pedido (x_sale_order_name): {con_so}')
+    print('valores de x_etiquetas_texto (filas, venta $):')
+    for k, c in cnt.most_common(25): print(f'   {k!r}: {c} filas, ${tot[k]:,.0f}')
+    print('por cuenta analitica (con/sin etiqueta):', {k: dict(v) for k, v in sorted(porcta.items(), key=lambda x: -sum(x[1].values()))[:12]})
+    ej = call(VISTA, 'search_read', [('x_sale_order_name', '=', 'S177174')], fields=['x_folio', 'x_etiquetas_texto', 'x_cuenta_analytica', 'x_date'], limit=3)
+    print('pedido S177174 (el de tu captura):', ej)
+except Exception as e: print('ERROR', str(e)[:300])
