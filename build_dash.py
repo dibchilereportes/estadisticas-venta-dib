@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 TOP_CLIENTES = 300
 DIMS = ['Empresa','Año','Mes','Canal_N1','Canal_N2','Canal_N3','DesgloseEntrega','local','LINEA_STD',
-        'CATEGORIA_STD','FAMILIA_STD','Descontinuado','TipoDoc','Cli','Vendedor','Negocio','PuntoVenta','CliGer','Segmento','LineaCom','BloqueInf','EntraCD']
+        'CATEGORIA_STD','FAMILIA_STD','Descontinuado','TipoDoc','Cli','Vendedor','Negocio','PuntoVenta','CliGer','Segmento','LineaCom','BloqueInf','EntraCD','Etiqueta']
 # Dimensiones de desglose disponibles en la vista Comparativo (Empresa/Año van aparte,
 # como filtro y como eje de comparacion respectivamente).
 COMP_DIMS = ['Canal_N1','Canal_N2','Canal_N3','local','PuntoVenta','CliGer','LineaCom','LINEA_STD','CATEGORIA_STD','Vendedor','TipoDoc']
@@ -108,7 +108,7 @@ def construir(parquet, template, salida, clave=None):
     v['Negocio'], v['PuntoVenta'] = clasificar_puntos_venta(v)
     # Niveles del informe CD (por fila). Vienen de la API (2026-08 en adelante) y del cruce historico
     # (datos/clasif_filas_hist.parquet). Lo que no tiene clasificacion queda como '(sin dato)'.
-    for c in ('CliGer', 'LineaCom', 'BloqueInf', 'EntraCD'):
+    for c in ('CliGer', 'LineaCom', 'BloqueInf', 'EntraCD', 'Etiqueta'):
         if c not in v.columns:
             v[c] = np.nan
     lc = v['LineaCom'].astype(str)

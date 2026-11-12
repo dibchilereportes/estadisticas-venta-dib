@@ -112,7 +112,8 @@ def extraer():
               'x_familia', 'x_subfamilia', 'x_medida_estandar', 'x_tipo_producto_reporte',
               'x_tipo_dte', 'x_numero_documento', 'x_folio', 'x_customer', 'x_rut',
               'x_vendedor', 'x_cantidad', 'x_precio', 'x_total_venta', 'x_costo',
-              'x_margen', 'x_margen_contribucion', 'x_estado_documento']
+              'x_margen', 'x_margen_contribucion', 'x_estado_documento',
+              'x_etiquetas_texto']
 
     dom = [('x_date', '>=', DESDE)]   # validado sin filtro de estado (calza con el total oficial)
     n = call('search_count', dom)
@@ -132,7 +133,8 @@ def extraer():
     TEXT_COLS = ['x_branch', 'x_canal', 'x_cuenta_analytica', 'x_analytic_code', 'x_codigo',
                  'x_producto', 'x_categoria', 'x_linea', 'x_familia', 'x_subfamilia',
                  'x_medida_estandar', 'x_tipo_producto_reporte', 'x_tipo_dte',
-                 'x_numero_documento', 'x_customer', 'x_rut', 'x_vendedor', 'x_estado_documento']
+                 'x_numero_documento', 'x_customer', 'x_rut', 'x_vendedor', 'x_estado_documento',
+                 'x_etiquetas_texto']
     for c in TEXT_COLS:
         if c in df.columns:
             df[c] = df[c].map(lambda v: np.nan if v is False else v)
@@ -189,6 +191,9 @@ def estandarizar(df):
                              | (df['x_tipo_producto_reporte'].astype(str).str.upper() == 'SERVICIO')
                              | out['CATEGORIA_STD'].astype(str).str.upper().isin(NO_UNITARIAS))
 
+    # Etiquetas del pedido de venta (ej. CL-MAYO, CL-FALA). Solo existen para ventas con pedido
+    # (mayoristas, webs, marketplaces); las tiendas fisicas quedan sin etiqueta. Desde ago-2026.
+    out['Etiqueta'] = df['x_etiquetas_texto'].astype(object).where(df['x_etiquetas_texto'].astype(bool), np.nan)
     out['OrigenClasif'] = 'API_ODOO'
     out['ClienteKey'] = upper_key(df['x_customer'])
     out['ClienteNombre'] = df['x_customer']
@@ -318,12 +323,33 @@ def estandarizar(df):
     return out
 
 
+def propagar_etiqueta(df):
+    """En Odoo la etiqueta a veces queda solo en la primera linea del documento. Se copia a las lineas
+    vacias del MISMO documento (Empresa + Tipo + Folio) cuando el documento tiene una sola etiqueta.
+    Si un documento trae mas de una etiqueta distinta no se toca (ambiguo)."""
+    if 'Etiqueta' not in df.columns:
+        return df
+    tmp = df[['Empresa', 'Tipo', 'Factura', 'Etiqueta']].copy()
+    tmp['Tipo'] = tmp['Tipo'].astype(str)
+    g = tmp.groupby(['Empresa', 'Tipo', 'Factura'], dropna=True)['Etiqueta']
+    unica = g.transform('nunique').eq(1)
+    primera = g.transform('first')
+    llenar = df['Etiqueta'].isna() & unica & primera.notna()
+    ambiguos = int((g.transform('nunique') > 1).groupby([tmp['Empresa'], tmp['Tipo'], tmp['Factura']]).first().sum()) if (g.transform('nunique') > 1).any() else 0
+    df.loc[llenar, 'Etiqueta'] = primera[llenar]
+    print(f"Etiqueta: {int(llenar.sum())} lineas completadas desde otra linea del mismo documento; "
+          f"documentos con mas de una etiqueta (sin tocar): {ambiguos}; "
+          f"lineas aun sin etiqueta: {int(df['Etiqueta'].isna().sum())} de {len(df)}")
+    return df
+
+
 def main():
     df_api = extraer()
     if df_api.empty:
         print('No hay filas nuevas, no se genera nada.')
         return
     nuevo = estandarizar(df_api)
+    nuevo = propagar_etiqueta(nuevo)
 
     # Clasificacion gerencial (informe diario CD/DIB/DECOEXPRESS). Si la matriz no esta o
     # falla, se avisa y se sigue: no debe romper la actualizacion diaria del dashboard.
