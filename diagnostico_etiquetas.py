@@ -78,3 +78,31 @@ try:
     ej = call(VISTA, 'search_read', [('x_sale_order_name', '=', 'S177174')], fields=['x_folio', 'x_etiquetas_texto', 'x_cuenta_analytica', 'x_date'], limit=3)
     print('pedido S177174 (el de tu captura):', ej)
 except Exception as e: print('ERROR', str(e)[:300])
+
+paso('5. Ventas de NO-tienda sin etiqueta: ¿tienen pedido? (desde 2026-08-01)')
+try:
+    import re
+    from collections import Counter
+    dom = [('x_date', '>=', '2026-08-01')]
+    n = call(VISTA, 'search_count', dom)
+    tienda = re.compile(r'^(DIB|BAZHARS) (?!WEB$)')
+    sin = []; cnt = Counter(); vta = Counter(); porcta = Counter()
+    for off in range(0, n, 5000):
+        for r in call(VISTA, 'search_read', dom, fields=['x_etiquetas_texto', 'x_sale_order_name', 'x_cuenta_analytica', 'x_folio', 'x_tipo_dte', 'x_customer', 'x_date', 'x_total_venta'], offset=off, limit=5000):
+            cta = r['x_cuenta_analytica'] or ''
+            if not isinstance(cta, str) or tienda.match(cta): continue
+            if r['x_etiquetas_texto']: continue
+            so = bool(r['x_sale_order_name'])
+            cnt['con pedido' if so else 'SIN pedido'] += 1
+            vta['con pedido' if so else 'SIN pedido'] += r['x_total_venta'] or 0
+            porcta[cta] += 1
+            sin.append(r)
+    print('lineas de no-tienda sin etiqueta:', dict(cnt), '| venta $:', {k: round(v) for k, v in vta.items()})
+    print('por cuenta analitica:', dict(porcta.most_common(10)))
+    docs = {}
+    for r in sin:
+        k = (r['x_folio'], r['x_tipo_dte']); d = docs.setdefault(k, {'v': 0, 'n': 0, 'r': r}); d['v'] += r['x_total_venta'] or 0; d['n'] += 1
+    print('documentos distintos:', len(docs), '| 15 mayores (folio, tipo, cuenta, cliente, fecha, lineas, venta, pedido):')
+    for (f, t), d in sorted(docs.items(), key=lambda x: -abs(x[1]['v']))[:15]:
+        r = d['r']; print('  ', f, t, r['x_cuenta_analytica'], r['x_customer'], r['x_date'], d['n'], round(d['v']), r['x_sale_order_name'] or '-')
+except Exception as e: print('ERROR', str(e)[:300])
