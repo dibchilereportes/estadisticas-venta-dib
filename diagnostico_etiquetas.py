@@ -106,3 +106,31 @@ try:
     for (f, t), d in sorted(docs.items(), key=lambda x: -abs(x[1]['v']))[:15]:
         r = d['r']; print('  ', f, t, r['x_cuenta_analytica'], r['x_customer'], r['x_date'], d['n'], round(d['v']), r['x_sale_order_name'] or '-')
 except Exception as e: print('ERROR', str(e)[:300])
+
+paso('6. Las facturas SIN pedido: ¿donde viven sus etiquetas? (account.move / account.move.line)')
+try:
+    def campos_tag(modelo):
+        f = call(modelo, 'fields_get', attributes=['string', 'type', 'relation'])
+        return {k: (v['string'], v['type'], v.get('relation')) for k, v in f.items()
+                if any(t in (k + ' ' + v['string']).lower() for t in ('tag', 'etiq'))}
+    ctm = campos_tag('account.move'); ctl = campos_tag('account.move.line')
+    print('account.move campos tag/etiqueta:', ctm)
+    print('account.move.line campos tag/etiqueta:', ctl)
+    def leer(mv):
+        out = {'move': mv['name']}
+        for k in ctm:
+            if k in mv: out[k] = mv[k]
+        return out
+    def mostrar(domain, titulo):
+        mvs = call('account.move', 'search_read', domain, fields=['name', 'ref'] + list(ctm), limit=3)
+        print(titulo, '->', len(mvs), 'facturas')
+        for mv in mvs:
+            print('   ', leer(mv))
+            lns = call('account.move.line', 'search_read', [('move_id', '=', mv['id']), ('display_type', '=', 'product')], fields=['name'] + list(ctl), limit=4)
+            for l in lns: print('       linea:', {k: l[k] for k in ctl if k in l})
+    mostrar([('name', '=', 'INV/2026/028332')], 'Ejemplo de tu captura INV/2026/028332')
+    folios = [str(f) for (f, t) in list(docs.keys())[:12]] if 'docs' in globals() else []
+    for fo in folios:
+        try: mostrar([('l10n_latam_document_number', 'ilike', fo), ('move_type', 'in', ['out_invoice', 'out_refund'])], 'folio ' + fo)
+        except Exception as e: print('folio', fo, 'ERROR', str(e)[:120])
+except Exception as e: print('ERROR', str(e)[:300])
