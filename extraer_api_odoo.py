@@ -343,12 +343,46 @@ def propagar_etiqueta(df):
     return df
 
 
+def etiqueta_encabezado(nuevo, df_api):
+    """Para lineas sin etiqueta (documentos sin pedido de venta, ej. facturas directas) toma la etiqueta
+    del ENCABEZADO de la factura: account.move.tag_ids, enlazando x_numero_documento = account.move.name.
+    Excluye ventas de tienda (boletas, no llevan etiqueta). Si falla, se avisa y se sigue."""
+    try:
+        import re
+        tienda = re.compile(r'^(DIB|BAZHARS) (?!WEB$)')
+        cta = df_api['x_cuenta_analytica'].astype(str)
+        num = df_api['x_numero_documento'].astype(str).str.strip()
+        cand = nuevo['Etiqueta'].isna() & num.ne('') & num.ne('False') & ~cta.str.match(tienda)
+        nums = sorted(set(num[cand]))
+        if not nums:
+            return nuevo
+        db, uid, key, models = conectar()
+        def call(modelo, metodo, *a, **kw):
+            return models.execute_kw(db, uid, key, modelo, metodo, list(a), kw)
+        tags = {}
+        for i in range(0, len(nums), 1000):
+            for mv in call('account.move', 'search_read', [('name', 'in', nums[i:i + 1000])], fields=['name', 'tag_ids']):
+                tags.setdefault(mv['name'], set()).update(mv['tag_ids'])
+        ids = sorted({t for v in tags.values() for t in v})
+        nombres = {t['id']: t['name'] for t in call('account.account.tag', 'read', ids, fields=['name'])} if ids else {}
+        mapa = {k: ' + '.join(sorted(nombres.get(t, str(t)) for t in v)) for k, v in tags.items() if v}
+        et = num.map(mapa)
+        llenar = cand & et.notna()
+        nuevo.loc[llenar, 'Etiqueta'] = et[llenar]
+        print(f"Etiqueta encabezado: {int(llenar.sum())} lineas completadas desde account.move.tag_ids "
+              f"({len(mapa)} de {len(nums)} documentos candidatos con etiqueta)")
+    except Exception as e:
+        print('AVISO etiqueta de encabezado no disponible:', repr(e)[:300])
+    return nuevo
+
+
 def main():
     df_api = extraer()
     if df_api.empty:
         print('No hay filas nuevas, no se genera nada.')
         return
     nuevo = estandarizar(df_api)
+    nuevo = etiqueta_encabezado(nuevo, df_api)
     nuevo = propagar_etiqueta(nuevo)
 
     # Clasificacion gerencial (informe diario CD/DIB/DECOEXPRESS). Si la matriz no esta o
