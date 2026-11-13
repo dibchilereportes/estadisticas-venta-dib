@@ -135,36 +135,37 @@ try:
         except Exception as e: print('folio', fo, 'ERROR', str(e)[:120])
 except Exception as e: print('ERROR', str(e)[:300])
 
-paso('7. Etiqueta del ENCABEZADO de la factura (account.move.tag_ids) para los 395 documentos sin pedido')
+paso('8. Etiqueta del ENCABEZADO (account.move.tag_ids) para documentos sin etiqueta: enlace x_numero_documento = account.move.name')
 try:
     from collections import Counter
-    claves = {}
-    for (f, t), d in docs.items():
-        claves[(str(f).split('.')[0], str(t))] = d
-    folios = sorted({k[0] for k in claves})
+    nums = {}
+    dom = [('x_date', '>=', '2026-08-01')]
+    n = call(VISTA, 'search_count', dom)
+    for off in range(0, n, 5000):
+        for r in call(VISTA, 'search_read', dom, fields=['x_numero_documento', 'x_etiquetas_texto', 'x_cuenta_analytica', 'x_folio', 'x_tipo_dte', 'x_total_venta'], offset=off, limit=5000):
+            cta = r['x_cuenta_analytica'] or ''
+            if not isinstance(cta, str) or tienda.match(cta) or r['x_etiquetas_texto']: continue
+            nd = r['x_numero_documento']
+            if not nd or nd is False: continue
+            d = nums.setdefault(str(nd).strip(), {'v': 0, 'cta': cta}); d['v'] += r['x_total_venta'] or 0
+    print(len(nums), 'numeros de documento distintos sin etiqueta | ejemplos:', list(nums)[:5])
     mvs = []
-    for i in range(0, len(folios), 150):
-        mvs += call('account.move', 'search_read',
-                    [('l10n_latam_document_number', 'in', folios[i:i+150]), ('state', '=', 'posted'),
-                     ('move_type', 'in', ['out_invoice', 'out_refund'])],
-                    fields=['name', 'l10n_latam_document_number', 'l10n_latam_document_type_id', 'invoice_date', 'tag_ids', 'company_id'])
-    print(len(folios), 'folios buscados;', len(mvs), 'facturas encontradas en account.move')
-    por_folio = {}
-    for m_ in mvs: por_folio.setdefault(str(m_['l10n_latam_document_number']).strip(), []).append(m_)
-    unico = sin_match = multiple = con_tag = 0; ids = Counter(); ej = []
-    for (f, t) in claves:
-        c = por_folio.get(f, [])
-        if not c: sin_match += 1; continue
-        if len(c) > 1: multiple += 1
-        else:
-            unico += 1
-            if c[0]['tag_ids']:
-                con_tag += 1
-                for x in c[0]['tag_ids']: ids[x] += 1
-                if len(ej) < 5: ej.append((f, t, c[0]['name'], c[0]['tag_ids']))
-    print(f'documentos: {len(claves)} | sin match: {sin_match} | match unico: {unico} (con etiqueta en encabezado: {con_tag}) | folio repetido en varias facturas: {multiple}')
-    nombres = {t['id']: t['name'] for t in call('account.account.tag', 'read', list(ids) + [137, 95], fields=['name'])} if ids else {}
-    print('etiquetas halladas (id -> nombre : documentos):', {nombres.get(k, k): v for k, v in ids.most_common()})
-    print('ejemplos (folio, tipo, factura, ids):', ej)
-    print('nombre de las etiquetas 137 y 95:', {k: nombres.get(k) for k in (137, 95)})
-except Exception as e: print('ERROR', str(e)[:300])
+    lst = list(nums)
+    for i in range(0, len(lst), 200):
+        mvs += call('account.move', 'search_read', [('name', 'in', lst[i:i+200])], fields=['name', 'tag_ids', 'move_type', 'state'])
+    print(len(mvs), 'account.move encontrados por name')
+    pm = {}
+    for m_ in mvs: pm.setdefault(m_['name'], []).append(m_)
+    ids = Counter(); vt = Counter(); sin_m = con_t = sin_t = 0; v_con = v_sin = v_nom = 0
+    for nd, d in nums.items():
+        c = pm.get(nd)
+        if not c: sin_m += 1; v_nom += d['v']; continue
+        tg = sorted({x for m_ in c for x in m_['tag_ids']})
+        if tg:
+            con_t += 1; v_con += d['v']
+            for x in tg: ids[x] += 1; vt[x] += d['v']
+        else: sin_t += 1; v_sin += d['v']
+    print(f'docs: {len(nums)} | sin match en account.move: {sin_m} (${v_nom:,.0f}) | match con etiqueta: {con_t} (${v_con:,.0f}) | match sin etiqueta: {sin_t} (${v_sin:,.0f})')
+    nombres = {t['id']: t['name'] for t in call('account.account.tag', 'read', list(ids), fields=['name'])} if ids else {}
+    print('etiquetas (nombre: docs, venta $):', {nombres.get(k, k): (v, round(vt[k])) for k, v in ids.most_common()})
+except Exception as e: print('ERROR', str(e)[:400])
