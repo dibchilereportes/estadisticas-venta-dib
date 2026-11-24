@@ -65,6 +65,7 @@ aside{background:var(--side);border-right:1px solid var(--ring);display:flex;fle
   text-overflow:ellipsis;text-align:center;transition:background .12s,border-color .12s}
 .emp-btn:hover{background:rgba(255,255,255,.2)}
 .emp-btn.active{background:#fff;color:var(--brand2);border-color:#fff}
+.emp-box .btn[aria-pressed="true"]{background:var(--s1);color:#fff;border-color:var(--s1);font-weight:600}
 .side-actions{display:flex;gap:6px}
 .side-actions .btn{flex:1;font-size:11.5px;padding:5px 6px;text-align:center;
   background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.32);color:#fff}
@@ -275,6 +276,16 @@ body.cdmode .topbar .chips{display:none}
 #cd-tbl tr.tot td{font-weight:700;background:var(--plane)}
 #cd-tbl .bar{display:inline-block;height:7px;border-radius:3px;background:var(--s1);vertical-align:middle;margin-left:6px}
 #cd-tbl .up{color:#1a7f37}#cd-tbl .mid{color:#9a6700}#cd-tbl .dn{color:#c0392b}
+/* vista Documentos */
+.dctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--muted)}
+.dctl select{background:var(--plane);border:1px solid var(--ring);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--ink);margin-left:3px}
+.dctl .chk{display:inline-flex;align-items:center;gap:5px;color:var(--ink2)}
+.dctl .btn{margin-left:auto}
+.tot-row td{font-weight:700;border-top:1px solid var(--axis)}
+body.docmode #kpis,body.docmode .topbar .chips,body.docmode #filters{display:none}
+body.docmode .wrap>*{display:none}
+body.docmode .wrap>#docs-view{display:block}
+#docs-view .kpis-mini{margin:0 0 12px}
 </style>
 </head>
 <body>
@@ -319,6 +330,8 @@ body.cdmode .topbar .chips{display:none}
           title="Solo locales, webs y marketplaces propios del negocio elegido">Locales y webs</button>
         <button type="button" class="btn" id="modo-cd" aria-pressed="false" style="margin-top:6px;width:100%"
           title="Niveles del informe de ventas desde CD: cliente, B2B/B2C, línea de producto">Informe CD</button>
+        <button type="button" class="btn" id="modo-docs" aria-pressed="false" style="margin-top:6px;width:100%"
+          title="Documentos registrados en SII: emitidos, recibidos y guías de despacho">Documentos SII</button>
       </div>
       <div class="side-actions">
         <button class="btn" id="reset">Limpiar todo</button>
@@ -375,6 +388,17 @@ body.cdmode .topbar .chips{display:none}
         <svg id="ch-cmp" height="340" role="img" aria-label="Comparativo entre años"></svg>
         <div class="tblwrap"><table id="cmp-tbl"><thead></thead><tbody></tbody></table></div>
         <p class="row-note" id="cmp-note"></p>
+      </div>
+      <div id="docs-view" hidden>
+        <div class="card"><div class="dctl" id="dctl"></div><p class="row-note" id="d-nota"></p></div>
+        <div class="kpis-mini" id="d-kpis"></div>
+        <div class="card"><h2>Resumen por tipo de documento</h2><p class="cap" id="d-tipo-cap"></p><div class="tblwrap" id="d-tipo"></div></div>
+        <div class="card"><div class="hd"><div><h2>¿Qué explica la variación?</h2><p class="cap" id="d-cmp-cap"></p></div>
+          <div class="cmp-ctrl"><select id="d-dim"></select></div></div>
+          <svg id="d-bar" height="200" role="img" aria-label="Aporte por clasificación"></svg>
+          <div class="tblwrap" id="d-cmp"></div></div>
+        <div class="card"><h2>Evolución mensual</h2><p class="cap">Zona sombreada = meses del período comparado.</p>
+          <div class="legend" id="d-lg"></div><svg id="d-lin" height="240" role="img" aria-label="Evolución mensual"></svg></div>
       </div>
       <div id="cd-view" hidden>
         <div class="card">
@@ -710,10 +734,11 @@ async function arrancar(bin){
     const vista=new TIPO[c.t](buf, base+c.off, Nc);
     (c.k.length<=1? Dc.meas : Dc.codes)[c.k]=vista;
   }
+  if(H.docs){ DD=parseSec(H.docs,buf,base); DP=parseSec(H.ped,buf,base); }
   if(H.sf){ Ds={dims:H.sf.dims, codes:{}, meas:{}, n:H.sf.n};
     for(const c of H.sf.cols){ const vista=new TIPO[c.t](buf, base+c.off, H.sf.n); (c.k.length<=1? Ds.meas : Ds.codes)[c.k]=vista; } }
   $('hdr-sub').textContent=D.meta.sub;
-  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls(); mtInit(); initModoLocales(); cdInit(); sfInit();
+  buildEmpresaSelector(); buildSidebar(); buildRankSelect(); buildCmpControls(); mtInit(); initModoLocales(); cdInit(); sfInit(); buildDocs();
   $('loading').hidden=true; $('shell').hidden=false;
   render();
 }
@@ -870,6 +895,7 @@ function cdInit(){
   ['cd-anio','cd-mes','cd-nivel'].forEach(id=>$(id).onchange=cdRender);
   const cv=$('cd-view'); cv.parentElement.insertBefore(cv,cv.parentElement.firstChild);   // la tabla de niveles va arriba
   b.onclick=()=>{
+    apagarDocs();
     modoCD=!modoCD; b.setAttribute('aria-pressed',modoCD); b.classList.toggle('active',modoCD);
     document.body.classList.toggle('cdmode',modoCD); $('cd-view').hidden=!modoCD;
     if(modoCD && modoLocales){ modoLocales=false; $('modo-loc').setAttribute('aria-pressed','false'); $('modo-loc').classList.remove('active'); }
@@ -985,7 +1011,7 @@ function aplicarEmpresa(i){
     x.classList.toggle('active',+x.dataset.i===i);
     x.hidden = modoCD ? !CD_BLOQUES[l] : (modoLocales && !NEG_DE_EMP[l]);
   });
-  const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+lab+(modoLocales?' · locales y webs':modoCD?' · Informe CD':'');
+  const mt=$('mbar-title'); if(mt) mt.textContent='Estadísticas de Venta · '+lab+(modoLocales?' · locales y webs':modoCD?' · Informe CD':modoDocs?' · Documentos SII':'');
   if(modoCD) cdRender();
   render();
 }
@@ -994,6 +1020,7 @@ function initModoLocales(){
   if(!D.dims['Negocio']||!D.dims['Negocio'].includes('DIB')){b.hidden=true;return}
   b.onclick=()=>{
     if(modoCD){ modoCD=false; $('modo-cd').setAttribute('aria-pressed','false'); $('modo-cd').classList.remove('active'); document.body.classList.remove('cdmode'); $('cd-view').hidden=true; }
+    apagarDocs();
     modoLocales=!modoLocales; b.setAttribute('aria-pressed',modoLocales); b.classList.toggle('active',modoLocales);
     if(modoLocales && !NEG_DE_EMP[D.dims['Empresa'][empActual]]) empActual=D.dims['Empresa'].indexOf(EMPRESA_DEFECTO);
     const rk=$('dim-rank'); if(rk) rk.value=modoLocales?'PuntoVenta':'Canal_N3';
@@ -1250,6 +1277,7 @@ function aplicarVisibilidad(k){
 
 /* ---------- render ---------- */
 function render(){
+  if(modoDocs){ renderDocs(); return; }
   actualizarOpciones();
   const m=maskExcept(null);
   pintarChips();
@@ -1652,6 +1680,216 @@ document.addEventListener('click',e=>{ if(!menu.contains(e.target)) menu.hidden=
 addEventListener('error',e=>{ if(!$('shell')||$('shell').hidden) fallo('Error: '+(e.message||e)); });
 addEventListener('unhandledrejection',e=>{ if(!$('shell')||$('shell').hidden)
   fallo('Error: '+((e.reason&&e.reason.message)||e.reason)); });
+/* ===================== módulo Documentos ===================== */
+let DD=null,DP=null,modoDocs=false,DOCS_LISTO=false;
+function parseSec(sec,buf,base){
+  const o={dims:sec.dims,codes:{},meas:{},n:sec.n,meta:sec.meta};
+  for(const c of sec.cols){
+    const v=new TIPO[c.t](buf,base+c.off,sec.n);
+    (c.k.length<=1? o.meas : o.codes)[c.k]=v;
+  }
+  return o;
+}
+const hx=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const DS={sent:0,med:'N',a:0,b:0,m1:1,m2:12,of:true,dim:'Tipo'};
+const SENT_OPC=[
+  {l:'Emitidos (ventas)',s:['Emitidos'],p:'Emitidos'},
+  {l:'Recibidos (compras)',s:['Recibidos'],p:null},
+  {l:'Guías de salida',s:['Guías de salida'],p:'Guías de salida'},
+  {l:'Guías de entrada',s:['Guías de entrada'],p:null},
+  {l:'Ventas + guías de salida',s:['Emitidos','Guías de salida'],p:'Ventas + guías de salida'}];
+const MED=[['N','Documentos'],['V','Neto'],['I','IVA'],['T','Bruto'],['X','Exento']];
+const MIDX={N:0,V:1,X:2,I:3,T:4};
+const DIMSEL=[['Tipo','Tipo de documento'],['Canal_N1','Canal'],['Canal_N2','Sub-canal'],['Canal_N3','Detalle de canal'],['Ubic','Sucursal / bodega']];
+let DOC_OPC=[],ANIOS=[],DXLS=null;
+const dnum=v=>NF.format(Math.round(v));
+const dval=(v,med)=>med==='N'? dnum(v) : 'M$ '+dnum(v);
+const dpct=v=>(v>0?'+':v<0?'−':'')+NF1.format(Math.abs(v))+' %';
+const dcol=v=>v<0?'#d03b3b':v>0?'#0ca30c':'inherit';
+
+function apagarDocs(){
+  if(!modoDocs) return;
+  modoDocs=false; const b=$('modo-docs');
+  b.setAttribute('aria-pressed','false'); b.classList.remove('active');
+  document.body.classList.remove('docmode'); $('docs-view').hidden=true;
+}
+function buildDocs(){
+  const b=$('modo-docs');
+  if(!DD||!DD.n){ b.hidden=true; return; }
+  b.onclick=()=>{
+    if(modoCD){ modoCD=false; $('modo-cd').setAttribute('aria-pressed','false'); $('modo-cd').classList.remove('active'); document.body.classList.remove('cdmode'); $('cd-view').hidden=true; }
+    if(modoLocales){ modoLocales=false; $('modo-loc').setAttribute('aria-pressed','false'); $('modo-loc').classList.remove('active'); }
+    modoDocs=!modoDocs; b.setAttribute('aria-pressed',modoDocs); b.classList.toggle('active',modoDocs);
+    document.body.classList.toggle('docmode',modoDocs); $('docs-view').hidden=!modoDocs;
+    aplicarEmpresa(empActual);
+  };
+  const dS=DD.dims.Sentido, dP=DP.dims.Sentido;
+  DOC_OPC=SENT_OPC.filter(o=>o.s.every(x=>dS.includes(x)));
+  ANIOS=[...new Set(DD.dims['Año'].map(Number))].sort((a,b)=>b-a);
+  DS.a=ANIOS[0]; DS.b=ANIOS.length>1?ANIOS[1]:ANIOS[0];
+  // mes hasta: último mes completo del año más reciente (el mes en curso distorsiona la comparación)
+  let m2=12,nota='';
+  const h=(DD.meta&&DD.meta.hasta||'').split('-').map(Number);
+  if(h.length===3){
+    const [d,m,y]=h, ult=new Date(y,m,0).getDate();
+    DS.a=y; DS.b=ANIOS.includes(y-1)?y-1:DS.a;
+    if(d<ult && m>1){ m2=m-1; nota='Datos hasta '+DD.meta.hasta+': el mes en curso está incompleto, por eso el período parte hasta '+MESES[m2-1]+'.'; }
+    else m2=m;
+  }
+  DS.m2=m2; DS.m1=1; DS.nota=nota;
+  const opt=(arr,sel)=>arr.map(([v,l])=>`<option value="${v}"${String(v)===String(sel)?' selected':''}>${hx(l)}</option>`).join('');
+  const meses=MESES.map((l,i)=>[i+1,l]);
+  $('dctl').innerHTML=
+    `<label>Documentos <select id="d-sent">${opt(DOC_OPC.map((o,i)=>[i,o.l]),0)}</select></label>`+
+    `<label>Medida <select id="d-med">${opt(MED,DS.med)}</select></label>`+
+    `<label>Año <select id="d-a">${opt(ANIOS.map(a=>[a,a]),DS.a)}</select></label>`+
+    `<span class="cmp-vs">vs</span><select id="d-b">${opt(ANIOS.map(a=>[a,a]),DS.b)}</select>`+
+    `<label>Mes <select id="d-m1">${opt(meses,DS.m1)}</select></label>`+
+    `<span class="cmp-vs">a</span><select id="d-m2">${opt(meses,DS.m2)}</select>`+
+    `<label class="chk"><input type="checkbox" id="d-of" checked> Solo oficiales</label>`+
+    `<button class="btn" id="d-xls">Descargar Excel</button>`;
+  $('d-sent').onchange=e=>{DS.sent=+e.target.value;renderDocs()};
+  $('d-med').onchange=e=>{DS.med=e.target.value;renderDocs()};
+  $('d-a').onchange=e=>{DS.a=+e.target.value;renderDocs()};
+  $('d-b').onchange=e=>{DS.b=+e.target.value;renderDocs()};
+  $('d-m1').onchange=e=>{DS.m1=+e.target.value;if(DS.m1>DS.m2){DS.m2=DS.m1;$('d-m2').value=DS.m2}renderDocs()};
+  $('d-m2').onchange=e=>{DS.m2=+e.target.value;if(DS.m2<DS.m1){DS.m1=DS.m2;$('d-m1').value=DS.m1}renderDocs()};
+  $('d-of').onchange=e=>{DS.of=e.target.checked;renderDocs()};
+  $('d-xls').onclick=()=>{ if(DXLS) descargarXLSX(DXLS.nombre,DXLS.hojas) };
+  $('d-dim').innerHTML=opt(DIMSEL,DS.dim);
+  $('d-dim').onchange=e=>{DS.dim=e.target.value;renderDocs()};
+  DOCS_LISTO=true;
+}
+function empresaDocs(){
+  return DD.dims.Empresa.indexOf(D.dims.Empresa[empActual]);
+}
+// una pasada por el cubo: totales, por clasificación, por tipo y serie mensual
+function pasada(emp,anio){
+  const C=DD.codes,M=DD.meas,o=DOC_OPC[DS.sent];
+  const sset=new Set(o.s.map(x=>DD.dims.Sentido.indexOf(x)));
+  const ofc=DD.dims.Estado.indexOf('Oficial');
+  const gset=new Set(['Guías de salida','Guías de entrada'].map(x=>DD.dims.Sentido.indexOf(x)));
+  const aniV=DD.dims['Año'].map(Number), mesV=DD.dims['Mes'].map(Number);
+  const dv=DD.dims[DS.dim], dc=C[DS.dim], tv=DD.dims.Tipo, tc=C.Tipo;
+  const r={tot:[0,0,0,0,0],key:new Map(),tipo:new Map(),mes:new Array(12).fill(0)};
+  const add=(mp,k,i,sa)=>{let a=mp.get(k);if(!a){a=[0,0,0,0,0];mp.set(k,a)}
+    a[0]+=M.N[i];a[1]+=sa*M.V[i];a[2]+=sa*M.X[i];a[3]+=sa*M.I[i];a[4]+=sa*M.T[i]};
+  for(let i=0;i<DD.n;i++){
+    if(C.Empresa[i]!==emp||aniV[C['Año'][i]]!==anio||!sset.has(C.Sentido[i])) continue;
+    if(DS.of&&C.Estado[i]!==ofc) continue;
+    const mm=mesV[C.Mes[i]];
+    const sa=(sset.size>1&&gset.has(C.Sentido[i]))? 0 : 1;   // en la unión, las guías suman documentos pero no montos
+    r.mes[mm-1]+=(DS.med==='N'||sa)? M[DS.med][i] : 0;
+    if(mm<DS.m1||mm>DS.m2) continue;
+    r.tot[0]+=M.N[i];r.tot[1]+=sa*M.V[i];r.tot[2]+=sa*M.X[i];r.tot[3]+=sa*M.I[i];r.tot[4]+=sa*M.T[i];
+    add(r.key,dv[dc[i]],i,sa); add(r.tipo,tv[tc[i]],i,sa);
+  }
+  return r;
+}
+function pedidos(emp,anio){
+  const o=DOC_OPC[DS.sent]; if(!o.p||!DP) return null;
+  const C=DP.codes,M=DP.meas;
+  const si=DP.dims.Sentido.indexOf(o.p), di=DP.dims.Dim.indexOf('TOTAL');
+  if(si<0||di<0) return null;
+  const aniV=DP.dims['Año'].map(Number), mesV=DP.dims['Mes'].map(Number);
+  let p=0,n=0;
+  for(let i=0;i<DP.n;i++){
+    if(C.Sentido[i]!==si||C.Dim[i]!==di||C.Empresa[i]!==emp||aniV[C['Año'][i]]!==anio) continue;
+    const mm=mesV[C.Mes[i]]; if(mm<DS.m1||mm>DS.m2) continue;
+    p+=M.P[i]; n+=M.N[i];
+  }
+  return {p,n};
+}
+function renderDocs(){
+  if(!DOCS_LISTO) return;
+  const emp=empresaDocs(), med=DS.med, mi=MIDX[med];
+  const vacio=emp<0;
+  const kp=$('d-kpis');
+  if(vacio){
+    kp.innerHTML='<div class="row-note">Esta empresa no tiene documentos en el módulo.</div>';
+    for(const id of ['d-tipo','d-cmp']) $(id).innerHTML='';
+    $('d-bar').innerHTML=''; $('d-lin').innerHTML=''; return;
+  }
+  const A=pasada(emp,DS.a), B=pasada(emp,DS.b);
+  const o=DOC_OPC[DS.sent];
+  const va=A.tot[mi], vb=B.tot[mi], d=va-vb, dp=vb? d/Math.abs(vb)*100 : null;
+  const pa=pedidos(emp,DS.a), pb=pedidos(emp,DS.b);
+  const per=`${MESES[DS.m1-1]}–${MESES[DS.m2-1]}`;
+  const kpi=(l,v,n,c)=>`<div class="kpi"><div class="lab">${l}</div><div class="val"${c?` style="color:${c}"`:''}>${v}</div><div class="note">${n}</div></div>`;
+  let k=[kpi(`${MED.find(x=>x[0]===med)[1]} ${DS.a}`,dval(va,med),per),
+         kpi(`${MED.find(x=>x[0]===med)[1]} ${DS.b}`,dval(vb,med),per),
+         kpi('Variación',(d>0?'+':d<0?'−':'')+dval(Math.abs(d),med),'año A − año B',dcol(d)),
+         kpi('Variación %',dp===null?'—':dpct(dp),`${DS.a} vs ${DS.b}`,dcol(d))];
+  if(pa&&pb) k.push(kpi('Pedidos únicos '+DS.a,dnum(pa.p),`${DS.b}: ${dnum(pb.p)} · docs/pedido ${NF1.format(pa.p?pa.n/pa.p:0)}`));
+  kp.innerHTML=k.join('');
+  $('d-nota').textContent=(DS.nota?DS.nota+' ':'')+(DS.of?'Solo documentos oficiales ante SII (guías: Proceso/Aceptado/Reparo). ':'Incluye documentos no oficiales (anulados, rechazados, no enviados). ')+
+    'Valores en miles de pesos; las notas de crédito restan.';
+  // --- tabla estilo Resumen SII por tipo ---
+  const tipos=[...A.tipo.keys()].concat([...B.tipo.keys()].filter(x=>!A.tipo.has(x)))
+    .sort((x,y)=>Math.abs((A.tipo.get(y)||[0,0,0,0,0])[mi])-Math.abs((A.tipo.get(x)||[0,0,0,0,0])[mi]));
+  const z=[0,0,0,0,0];
+  let th=`<table><thead><tr><th>Tipo de documento</th><th>Docs</th><th>Exento</th><th>Neto</th><th>IVA</th><th>Total</th><th>${DS.b}</th><th>Δ %</th></tr></thead><tbody>`;
+  const fila=(nom,a,b,cls)=>{const dd=a[mi]-b[mi], pp=b[mi]?dd/Math.abs(b[mi])*100:null;
+    return `<tr${cls?` class="${cls}"`:''}><td>${hx(nom)}</td><td>${dnum(a[0])}</td><td>${dnum(a[2])}</td><td>${dnum(a[1])}</td><td>${dnum(a[3])}</td><td>${dnum(a[4])}</td><td>${dnum(b[mi])}</td><td style="color:${dcol(dd)}">${pp===null?'—':dpct(pp)}</td></tr>`};
+  tipos.forEach(t=>{th+=fila(t,A.tipo.get(t)||z,B.tipo.get(t)||z)});
+  th+=fila('TOTAL',A.tot,B.tot,'tot-row')+'</tbody></table>';
+  $('d-tipo').innerHTML=th;
+  $('d-tipo-cap').textContent=`${o.l} · ${DS.a} · ${per} (montos en M$; la columna ${DS.b} y Δ % usan la medida elegida)`;
+  // --- comparativo por clasificación ---
+  const claves=[...new Set([...A.key.keys(),...B.key.keys()])];
+  const filas=claves.map(c=>{const a=(A.key.get(c)||z)[mi],b=(B.key.get(c)||z)[mi],dd=a-b;
+    return {k:c,a,b,d:dd,pc:b?dd/Math.abs(b)*100:null,ap:vb?dd/Math.abs(vb)*100:0};})
+    .sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
+  let tc=`<table><thead><tr><th>${hx(DIMSEL.find(x=>x[0]===DS.dim)[1])}</th><th>${DS.b}</th><th>${DS.a}</th><th>Δ</th><th>Δ %</th><th>Aporte al total</th></tr></thead><tbody>`;
+  filas.forEach(f=>{tc+=`<tr><td>${hx(f.k)}</td><td>${dnum(f.b)}</td><td>${dnum(f.a)}</td><td style="color:${dcol(f.d)}">${f.d>0?'+':f.d<0?'−':''}${dnum(Math.abs(f.d))}</td><td style="color:${dcol(f.d)}">${f.pc===null?'nuevo':dpct(f.pc)}</td><td style="color:${dcol(f.d)}"><b>${(f.ap>0?'+':f.ap<0?'−':'')+NF1.format(Math.abs(f.ap))} pp</b></td></tr>`});
+  tc+=`<tr class="tot-row"><td>TOTAL</td><td>${dnum(vb)}</td><td>${dnum(va)}</td><td style="color:${dcol(d)}">${d>0?'+':d<0?'−':''}${dnum(Math.abs(d))}</td><td style="color:${dcol(d)}">${dp===null?'—':dpct(dp)}</td><td style="color:${dcol(d)}"><b>${dp===null?'—':dpct(dp).replace(' %',' pp')}</b></td></tr></tbody></table>`;
+  $('d-cmp').innerHTML=tc;
+  $('d-cmp-cap').textContent=`Qué clasificación explica la variación total. "Aporte" = Δ de la clasificación ÷ total ${DS.b} (los aportes suman la variación total).`;
+  dBarras(filas); dLineas(A.mes,B.mes);
+  // --- export ---
+  const mn=MED.find(x=>x[0]===med)[1];
+  DXLS={nombre:`documentos_${D.dims.Empresa[empActual]}_${DS.a}_vs_${DS.b}.xlsx`.replace(/\s+/g,'_'),hojas:[
+    {nombre:'Por tipo',cols:[{h:'Tipo',w:34,tipo:'txt'},{h:'Docs',w:10,tipo:'num'},{h:'Exento M$',w:14,tipo:'num'},{h:'Neto M$',w:14,tipo:'num'},{h:'IVA M$',w:14,tipo:'num'},{h:'Total M$',w:14,tipo:'num'},{h:mn+' '+DS.b,w:14,tipo:'num'},{h:'Δ %',w:10,tipo:'pct'}],
+      rows:tipos.map(t=>{const a=A.tipo.get(t)||z,b=B.tipo.get(t)||z;return [t,a[0],a[2],a[1],a[3],a[4],b[mi],b[mi]?(a[mi]-b[mi])/Math.abs(b[mi])*100:0]})
+        .concat([['TOTAL',A.tot[0],A.tot[2],A.tot[1],A.tot[3],A.tot[4],B.tot[mi],vb?d/Math.abs(vb)*100:0]])},
+    {nombre:'Comparativo',cols:[{h:DIMSEL.find(x=>x[0]===DS.dim)[1],w:34,tipo:'txt'},{h:mn+' '+DS.b,w:14,tipo:'num'},{h:mn+' '+DS.a,w:14,tipo:'num'},{h:'Δ',w:14,tipo:'num'},{h:'Δ %',w:10,tipo:'pct'},{h:'Aporte pp',w:11,tipo:'pct'}],
+      rows:filas.map(f=>[f.k,f.b,f.a,f.d,f.pc===null?0:f.pc,f.ap])},
+    {nombre:'Mensual',cols:[{h:'Mes',w:8,tipo:'txt'},{h:mn+' '+DS.b,w:14,tipo:'num'},{h:mn+' '+DS.a,w:14,tipo:'num'}],
+      rows:MESES.map((m,i)=>[m,B.mes[i],A.mes[i]])}]};
+}
+function dBarras(filas){
+  const svg=$('d-bar'),W=svg.clientWidth||800,top=filas.slice(0,12);
+  const rh=26,P={l:Math.min(230,W*.4),r:70,t:6,b:6},H=P.t+P.b+Math.max(top.length,1)*rh;
+  svg.setAttribute('height',H);
+  const x0=P.l+46,mx=Math.max(...top.map(r=>Math.abs(r.ap)),0.01),cx=x0+(W-x0-P.r)/2,sc=(W-x0-P.r)/2/mx;
+  const pos=cssv('--s3'),neg=cssv('--s2');
+  let g=`<line x1="${cx}" x2="${cx}" y1="${P.t}" y2="${H-P.b}" stroke="${cssv('--axis')}"/>`;
+  top.forEach((r,i)=>{
+    const y=P.t+i*rh,w=Math.abs(r.ap)*sc,x=r.ap>=0?cx:cx-w,col=r.ap>=0?pos:neg;
+    const tip=`${hx(r.k)}|Aporte: <b>${(r.ap>0?'+':r.ap<0?'−':'')+NF1.format(Math.abs(r.ap))} pp</b><br>Δ ${dnum(r.d)} · ${r.pc===null?'nuevo':dpct(r.pc)}`;
+    g+=`<g data-t="${tip.replace(/"/g,'&quot;')}"><rect x="${P.l}" y="${y}" width="${W-P.l-P.r}" height="${rh}" fill="transparent"/>`+
+      `<text x="${P.l-8}" y="${y+rh/2+4}" text-anchor="end" font-size="11.5" fill="${cssv('--ink2')}">${hx(truncar(r.k,P.l-14,11.5))}</text>`+
+      `<rect x="${x}" y="${y+4}" width="${Math.max(w,1)}" height="${rh-8}" rx="3" fill="${col}"/>`+
+      `<text x="${r.ap>=0?x+w+5:x-5}" y="${y+rh/2+4}" text-anchor="${r.ap>=0?'start':'end'}" font-size="11" fill="${cssv('--ink')}">${(r.ap>0?'+':r.ap<0?'−':'')+NF1.format(Math.abs(r.ap))}</text></g>`;
+  });
+  svg.innerHTML=g; hookTips(svg);
+}
+function dLineas(a,b){
+  const svg=$('d-lin'),W=svg.clientWidth||800,H=240,P={l:58,r:14,t:10,b:24};
+  const yMax=Math.max(...a,...b,1)*1.08, X=n=>P.l+(W-P.l-P.r)*(n-1)/11, Y=v=>H-P.b-(H-P.t-P.b)*(v/yMax);
+  const colA=cssv('--s1'),colB=cssv('--s2');
+  let g=`<rect x="${X(DS.m1)-8}" y="${P.t}" width="${X(DS.m2)-X(DS.m1)+16}" height="${H-P.t-P.b}" fill="${cssv('--hover')}" opacity=".6"/>`;
+  g+=ejes(W,H,P,MESES.map((m,i)=>[X(i+1),m]),yMax);
+  const linea=(arr,col,dash)=>{const pts=arr.map((v,i)=>[X(i+1),Y(v),v]).filter(p=>p[2]!==0);
+    if(!pts.length) return '';
+    return `<polyline fill="none" stroke="${col}" stroke-width="2"${dash?' stroke-dasharray="5 4"':''} points="${pts.map(p=>p[0]+','+p[1]).join(' ')}"/>`+
+      pts.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${col}"/>`).join('')};
+  g+=linea(b,colB,true)+linea(a,colA,false);
+  MESES.forEach((m,i)=>{g+=`<rect x="${X(i+1)-14}" y="${P.t}" width="28" height="${H-P.t-P.b}" fill="transparent" data-t="${m}|${DS.a}: <b>${dnum(a[i])}</b><br>${DS.b}: <b>${dnum(b[i])}</b>"/>`});
+  svg.innerHTML=g; hookTips(svg);
+  $('d-lg').innerHTML=`<span><i style="background:${colA}"></i>${DS.a}</span><span><i style="background:${colB}"></i>${DS.b}</span>`;
+}
+
 let rt; addEventListener('resize',()=>{clearTimeout(rt); rt=setTimeout(()=>{if(D)render()},150)});
 boot();
 </script>

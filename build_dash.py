@@ -22,6 +22,63 @@ def _codificar_dim(serie):
     dt = 'u1' if len(cats) <= 255 else ('u2' if len(cats) <= 65535 else 'i4')
     return cats, cod.astype(dt), dt
 
+DOCS_PARQUET = 'datos/docs_odoo.parquet'
+TIPOS_DOC = {33: 'Factura Electrónica (33)', 34: 'Factura Exenta Electrónica (34)',
+             39: 'Boleta Electrónica (39)', 41: 'Boleta Exenta Electrónica (41)',
+             43: 'Liquidación-Factura Electrónica (43)', 46: 'Factura de Compra Electrónica (46)',
+             52: 'Guía de Despacho Electrónica (52)', 56: 'Nota de Débito Electrónica (56)',
+             61: 'Nota de Crédito Electrónica (61)', 110: 'Factura de Exportación Electrónica (110)',
+             111: 'Nota de Débito de Exportación (111)', 112: 'Nota de Crédito de Exportación (112)',
+             914: 'Declaración de Ingreso DIN (914)'}
+SENTIDOS = {'EMITIDO': 'Emitidos', 'RECIBIDO': 'Recibidos',
+            'GUIA_SALIDA': 'Guías de salida', 'GUIA_ENTRADA': 'Guías de entrada'}
+SENT_UNION = 'Ventas + guías de salida'
+DOC_DIMS = ['Empresa', 'Año', 'Mes', 'Sentido', 'Tipo', 'Canal_N1', 'Canal_N2', 'Canal_N3',
+            'Ubic', 'Estado']
+
+def _cubos_docs(ruta):
+    """Cubo fino (aditivo: N docs, V neto, X exento, I iva, T total, en miles de $, NC con signo
+    negativo) + cubo de pedidos distintos por dimensión (no aditivo, solo documentos oficiales)."""
+    d = pd.read_parquet(ruta)
+    d = d[d['es_sii']].copy()
+    d['Empresa'] = d['empresa']; d['Año'] = d['anio']; d['Mes'] = d['mes']
+    d['Sentido'] = d['sentido'].map(SENTIDOS)
+    d['Tipo'] = d['cod_sii'].map(TIPOS_DOC).fillna(d['tipo_doc'])
+    guia = d['sentido'].str.startswith('GUIA')
+    d['Ubic'] = np.where(guia & d['bodega'].ne(''), d['bodega'], d['sucursal'])
+    d['Estado'] = np.where(d['oficial'], 'Oficial', 'No oficial')
+    # recibidos y guías no tienen canal de venta: se etiquetan para poder desglosarlos igual
+    emi, rec = d['sentido'].eq('EMITIDO'), d['sentido'].eq('RECIBIDO')
+    d['Canal_N1'] = np.where(emi, d['Canal_N1'], np.where(rec, 'Compras', 'Guías de despacho'))
+    d['Canal_N2'] = np.where(emi, d['Canal_N2'], np.where(rec, 'Compras', d['Sentido']))
+    d['Canal_N3'] = np.where(emi, d['Canal_N3'], np.where(rec, 'Compras', d['tipo_operacion']))
+    s = d['signo']
+    d['N'] = 1
+    d['V'] = d['neto'] * s / 1000; d['X'] = d['exento'] * s / 1000
+    d['I'] = d['iva'] * s / 1000;  d['T'] = d['total'] * s / 1000
+    cubo = (d.groupby(DOC_DIMS, observed=True, dropna=False)
+              .agg(N=('N', 'sum'), V=('V', 'sum'), X=('X', 'sum'), I=('I', 'sum'), T=('T', 'sum'))
+              .reset_index())
+    # pedidos distintos: operación = pedido de venta/POS/traspaso; un documento sin pedido cuenta como 1
+    of = d[d['oficial'] & d['sentido'].isin(['EMITIDO', 'GUIA_SALIDA'])].copy()
+    of['clave'] = of['empresa'] + '|' + np.where(
+        of['clave_pedido'].ne(''), of['clave_pedido'],
+        of['origen'] + ':' + of['cod_sii'].astype(str) + ':' + of['folio'].astype(str))
+    base = ['Empresa', 'Año', 'Mes', 'Sentido']
+    piezas = [of.groupby(base).agg(N=('N', 'sum'), P=('clave', 'nunique')).reset_index()
+                .assign(Dim='TOTAL', Valor='(todos)')]
+    # unión emitidos + guías de salida: una factura y su guía cuentan 2 documentos y 1 pedido
+    of2 = of.copy(); of2['Sentido'] = SENT_UNION
+    piezas.append(of2.groupby(base).agg(N=('N', 'sum'), P=('clave', 'nunique')).reset_index()
+                .assign(Dim='TOTAL', Valor='(todos)'))
+    for dim in ['Tipo', 'Canal_N1', 'Canal_N2', 'Canal_N3', 'Ubic']:
+        g = (of.groupby(base + [dim]).agg(N=('N', 'sum'), P=('clave', 'nunique')).reset_index()
+               .rename(columns={dim: 'Valor'}).assign(Dim=dim))
+        piezas.append(g)
+    ped = pd.concat(piezas, ignore_index=True)[base + ['Dim', 'Valor', 'N', 'P']]
+    meta = {'hasta': f"{d['fecha'].max():%d-%m-%Y}", 'n': int(len(d))}
+    return cubo, ped, meta
+
 FUERA = '(fuera de locales)'
 MKP_DECO_N3 = {'Falabella','Paris','Ripley','Mercado Libre','Walmart'}
 
@@ -98,7 +155,9 @@ def _leer_metas(parquet):
         print('AVISO: sin metas por local para el panel:', e)
         return []
 
-def construir(parquet, template, salida, clave=None):
+def construir(parquet, template, salida, clave=None, docs=None):
+    if docs is None and os.path.exists(DOCS_PARQUET):
+        docs = DOCS_PARQUET
     v = pd.read_parquet(parquet)
     tot = v.groupby('ClienteNombre', observed=True).Venta.sum().sort_values(ascending=False)
     top = set(tot.head(TOP_CLIENTES).index)
@@ -188,6 +247,25 @@ def construir(parquet, template, salida, clave=None):
         columnas.append(('sf', k, dt, cod))
     columnas.append(('sf', 'V', 'f8', sf_df['V'].to_numpy().astype('f8')))
 
+    # ---- modulo Documentos: cubo fino ('docs') y pedidos distintos ('ped') ----------------
+    if docs:
+        cubo, ped, dmeta = _cubos_docs(docs)
+        header["docs"] = {"n": len(cubo), "dims": {}, "cols": [], "meta": dmeta}
+        header["ped"] = {"n": len(ped), "dims": {}, "cols": []}
+        for k in DOC_DIMS:
+            cats, cod, dt = _codificar_dim(cubo[k])
+            header["docs"]["dims"][k] = cats
+            columnas.append(('docs', k, dt, cod))
+        for m, dt in [("N", 'i4'), ("V", 'f8'), ("X", 'f8'), ("I", 'f8'), ("T", 'f8')]:
+            columnas.append(('docs', m, dt, cubo[m].to_numpy().astype(dt)))
+        for k in ['Empresa', 'Año', 'Mes', 'Sentido', 'Dim', 'Valor']:
+            cats, cod, dt = _codificar_dim(ped[k])
+            header["ped"]["dims"][k] = cats
+            columnas.append(('ped', k, dt, cod))
+        for m, dt in [("N", 'i4'), ("P", 'i4')]:
+            columnas.append(('ped', m, dt, ped[m].to_numpy().astype(dt)))
+        print(f"modulo Documentos: {len(cubo):,} filas cubo, {len(ped):,} filas pedidos ({dmeta['n']:,} documentos)")
+
     ORDEN = {'f8': 0, 'i4': 1, 'f4': 1, 'u2': 2, 'u1': 3}   # mayor alineación primero
     columnas.sort(key=lambda t: ORDEN[t[2]])
     cuerpo, off = [], 0
@@ -232,4 +310,5 @@ if __name__ == "__main__":
     construir(sys.argv[1] if len(sys.argv)>1 else 'out2/ventas_bdd.parquet',
               sys.argv[2] if len(sys.argv)>2 else 'dash_template.html',
               sys.argv[3] if len(sys.argv)>3 else '/mnt/user-data/outputs/Estadisticas_Venta_DIB.html',
-              sys.argv[4] if len(sys.argv)>4 else os.environ.get('DASH_CLAVE'))
+              sys.argv[4] if len(sys.argv)>4 else os.environ.get('DASH_CLAVE'),
+              sys.argv[5] if len(sys.argv)>5 else None)

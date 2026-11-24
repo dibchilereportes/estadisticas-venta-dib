@@ -41,6 +41,7 @@ jobs:
           cp datos-repo/datos/informe_cd_2025.parquet datos-repo/datos/metas_cliente_2026.csv datos-repo/datos/metas_linea_2026.csv datos/ || echo "AVISO: faltan datos del informe CD"
           cp datos-repo/datos/metas_local_2026.csv datos-repo/datos/historico_local_2025.csv datos/ || echo "AVISO: faltan metas/historico de locales"
           cp datos-repo/datos/clasif_filas_hist.parquet datos/ || echo "AVISO: sin clasificacion por fila del historico"
+          cp datos-repo/datos/docs_odoo.parquet datos/ || echo "AVISO: sin documentos SII previos"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -57,6 +58,19 @@ jobs:
           ODOO_USER: ${{ secrets.ODOO_USER }}
           ODOO_KEY: ${{ secrets.ODOO_KEY }}
         run: python extraer_api_odoo.py
+
+      - name: Extraer documentos SII (modulo Documentos)
+        # Va despues de extraer_api_odoo.py porque toma el canal de datos/ventas_bdd.parquet.
+        # Si falla, se conserva el parquet del dia anterior y el modulo no desaparece.
+        continue-on-error: true
+        env:
+          ODOO_URL: ${{ secrets.ODOO_URL }}
+          ODOO_DB: ${{ secrets.ODOO_DB }}
+          ODOO_USER: ${{ secrets.ODOO_USER }}
+          ODOO_KEY: ${{ secrets.ODOO_KEY }}
+        run: |
+          ANIO=$(TZ=America/Santiago date +%Y)
+          python extraer_docs_odoo.py $((ANIO-1)) $ANIO
 
       - name: Generar informe CD (ayer, hora Chile) - NO envia correo
         continue-on-error: true
@@ -90,6 +104,7 @@ jobs:
           cp datos/ventas_bdd.parquet datos-repo/datos/ventas_bdd.parquet
           cp datos/cubo_mes.parquet datos-repo/datos/cubo_mes.parquet
           cp datos/informe_cd_2026.parquet datos-repo/datos/informe_cd_2026.parquet || true
+          cp datos/docs_odoo.parquet datos-repo/datos/docs_odoo.parquet || true
           mkdir -p datos-repo/informes && cp informes/*.xlsx datos-repo/informes/ 2>/dev/null || true
           cd datos-repo
           git config user.name "github-actions[bot]"
